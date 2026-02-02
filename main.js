@@ -26,7 +26,7 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getFilteredTabs();
 
 		// Title
-		contentEl.createEl('h3', { text: 'タブ一覧' });
+		contentEl.createEl('h3', { text: 'Tab Palette' });
 
 		// Tab list
 		const tabList = contentEl.createDiv('tab-palette-list');
@@ -120,26 +120,23 @@ class TabPaletteModal extends Modal {
 				tabEl.addClass('is-pinned');
 			}
 
-			// Tab name
-			const nameEl = tabEl.createDiv('tab-palette-name');
+			// Main single-row container
+			const entryEl = tabEl.createDiv('tab-palette-entry');
+
+			// Left side: pin icon + tab name + tags
+			const leftEl = entryEl.createDiv('tab-palette-left');
 
 			// Pin icon
 			if (tab.isPinned) {
-				const pinIcon = nameEl.createSpan('tab-palette-pin-icon');
+				const pinIcon = leftEl.createSpan('tab-palette-pin-icon');
 				setIcon(pinIcon, 'pin');
 			}
 
-			const nameText = nameEl.createSpan('tab-palette-name-text');
+			// Tab name
+			const nameText = leftEl.createSpan('tab-palette-name-text');
 			nameText.setText(tab.name);
 
-			// Show the tag and path on a single line
-			const infoEl = tabEl.createDiv('tab-palette-info');
-
-			if (this.plugin.settings.showPath) {
-				const pathEl = infoEl.createSpan('tab-palette-path');
-				pathEl.setText(tab.path);
-			}
-
+			// Tag (to the right of the title)
 			if (this.plugin.settings.showTags) {
 				// Get tags from the file's metadata
 				const cache = this.app.metadataCache.getFileCache(tab.file);
@@ -161,9 +158,26 @@ class TabPaletteModal extends Modal {
 				}
 
 				if (allTags.length > 0) {
-					const tagsEl = infoEl.createSpan('tab-palette-tags');
+					const tagsEl = leftEl.createSpan('tab-palette-tags');
 					tagsEl.setText(allTags.join(' '));
 				}
+			}
+
+			// Right side: path
+			if (this.plugin.settings.showPath) {
+				const rightEl = entryEl.createDiv('tab-palette-right');
+
+				// Folder icon
+				const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
+				setIcon(folderIcon, 'folder');
+
+				// Path
+				const pathEl = rightEl.createSpan('tab-palette-path');
+				// Show only the directory part (excluding the file name)
+				const pathParts = tab.path.split('/');
+				pathParts.pop(); // 最後の要素（ファイル名）を除く
+				const dirPath = pathParts.join('/') || '/';
+				pathEl.setText(dirPath);
 			}
 
 			// Click event
