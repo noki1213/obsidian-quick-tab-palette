@@ -1,0 +1,77 @@
+/* タブパレットモーダル */
+.tab-palette-modal {
+	padding: 20px;
+	max-width: 600px;
+	width: 100%;
+}
+
+/* タブリスト */
+.tab-palette-list {
+	margin-top: 15px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+/* タブアイテム */
+.tab-palette-item {
+	padding: 10px;
+	margin-bottom: 5px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+
+.tab-palette-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.tab-palette-item.is-selected {
+	background-color: var(--background-modifier-active-hover);
+	border-color: var(--interactive-accent);
+}
+
+.tab-palette-item.is-pinned {
+	border-left: 3px solid var(--interactive-accent);
+}
+
+/* タブ名 */
+.tab-palette-name {
+	font-weight: 600;
+	margin-bottom: 5px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.tab-palette-pin-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.tab-palette-pin-icon svg {
+	width: 14px;
+	height: 14px;
+	color: var(--interactive-accent);
+}
+
+.tab-palette-name-text {
+	flex: 1;
+}
+
+/* タブ情報（パスとタグ） */
+.tab-palette-info {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.tab-palette-path {
+	color: var(--text-muted);
+}
+
+.tab-palette-tags {
+	color: var(--text-accent);
+}

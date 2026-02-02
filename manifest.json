@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-tab-palette",
+	"name": "Tab Palette",
+	"version": "0.1.0",
+	"minAppVersion": "1.0.0",
+	"description": "Advanced tab management with palette view, exclusion filters, and always open in new tab option",
+	"author": "maaya",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

@@ -1,0 +1,9 @@
+{
+  "excludedFolders": [
+    "90_Attachment"
+  ],
+  "showTags": true,
+  "showPath": true,
+  "sortOrder": "recency",
+  "alwaysOpenInNewTab": true
+}
