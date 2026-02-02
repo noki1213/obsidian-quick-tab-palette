@@ -26,7 +26,7 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getFilteredTabs();
 
 		// タイトル
-		contentEl.createEl('h3', { text: 'タブ一覧' });
+		contentEl.createEl('h3', { text: 'Tab Palette' });
 
 		// タブリスト
 		const tabList = contentEl.createDiv('tab-palette-list');
@@ -120,26 +120,23 @@ class TabPaletteModal extends Modal {
 				tabEl.addClass('is-pinned');
 			}
 
-			// タブ名
-			const nameEl = tabEl.createDiv('tab-palette-name');
+			// メインの1行コンテナ
+			const entryEl = tabEl.createDiv('tab-palette-entry');
+
+			// 左側：ピンアイコン + タブ名 + タグ
+			const leftEl = entryEl.createDiv('tab-palette-left');
 
 			// ピンアイコン
 			if (tab.isPinned) {
-				const pinIcon = nameEl.createSpan('tab-palette-pin-icon');
+				const pinIcon = leftEl.createSpan('tab-palette-pin-icon');
 				setIcon(pinIcon, 'pin');
 			}
 
-			const nameText = nameEl.createSpan('tab-palette-name-text');
+			// タブ名
+			const nameText = leftEl.createSpan('tab-palette-name-text');
 			nameText.setText(tab.name);
 
-			// タグとパスを1行に表示
-			const infoEl = tabEl.createDiv('tab-palette-info');
-
-			if (this.plugin.settings.showPath) {
-				const pathEl = infoEl.createSpan('tab-palette-path');
-				pathEl.setText(tab.path);
-			}
-
+			// タグ（タイトルの右側）
 			if (this.plugin.settings.showTags) {
 				// ファイルのメタデータからタグを取得
 				const cache = this.app.metadataCache.getFileCache(tab.file);
@@ -161,9 +158,26 @@ class TabPaletteModal extends Modal {
 				}
 
 				if (allTags.length > 0) {
-					const tagsEl = infoEl.createSpan('tab-palette-tags');
+					const tagsEl = leftEl.createSpan('tab-palette-tags');
 					tagsEl.setText(allTags.join(' '));
 				}
+			}
+
+			// 右側：パス
+			if (this.plugin.settings.showPath) {
+				const rightEl = entryEl.createDiv('tab-palette-right');
+
+				// フォルダアイコン
+				const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
+				setIcon(folderIcon, 'folder');
+
+				// パス
+				const pathEl = rightEl.createSpan('tab-palette-path');
+				// ディレクトリ部分のみを表示（ファイル名を除く）
+				const pathParts = tab.path.split('/');
+				pathParts.pop(); // 最後の要素（ファイル名）を除く
+				const dirPath = pathParts.join('/') || '/';
+				pathEl.setText(dirPath);
 			}
 
 			// クリックイベント

@@ -5,9 +5,14 @@
 	width: 100%;
 }
 
+.tab-palette-modal h3 {
+	margin-top: 0;
+	margin-bottom: 8px;
+}
+
 /* タブリスト */
 .tab-palette-list {
-	margin-top: 15px;
+	margin-top: 0;
 	max-height: 400px;
 	overflow-y: auto;
 }
@@ -35,18 +40,28 @@
 	border-left: 3px solid var(--interactive-accent);
 }
 
-/* タブ名 */
-.tab-palette-name {
-	font-weight: 600;
-	margin-bottom: 5px;
+/* メインの1行コンテナ */
+.tab-palette-entry {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	width: 100%;
+}
+
+/* 左側（ピンアイコン + タブ名） */
+.tab-palette-left {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	flex: 1;
+	min-width: 0;
 }
 
 .tab-palette-pin-icon {
 	display: inline-flex;
 	align-items: center;
+	flex-shrink: 0;
 }
 
 .tab-palette-pin-icon svg {
@@ -56,22 +71,42 @@
 }
 
 .tab-palette-name-text {
-	flex: 1;
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-/* タブ情報（パスとタグ） */
-.tab-palette-info {
-	font-size: 0.85em;
-	color: var(--text-muted);
+/* 右側（フォルダアイコン + パス） */
+.tab-palette-right {
 	display: flex;
-	gap: 10px;
-	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	font-size: 0.75em;
+	color: var(--text-muted);
+}
+
+.tab-palette-folder-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.tab-palette-folder-icon svg {
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
 }
 
 .tab-palette-path {
 	color: var(--text-muted);
+	white-space: nowrap;
 }
 
+/* タグ（タイトルの右側） */
 .tab-palette-tags {
+	font-size: 0.75em;
 	color: var(--text-accent);
+	margin-left: 8px;
+	white-space: nowrap;
 }
