@@ -10,6 +10,15 @@
 	margin-bottom: 8px;
 }
 
+/* キーボード操作中はカーソルを非表示 */
+.modal.is-keyboard-mode {
+	cursor: none;
+}
+
+.modal.is-keyboard-mode * {
+	cursor: none;
+}
+
 /* タブリスト */
 .tab-palette-list {
 	margin-top: 0;

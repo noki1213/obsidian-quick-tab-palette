@@ -32,13 +32,28 @@ class TabPaletteModal extends Modal {
 		const tabList = contentEl.createDiv('tab-palette-list');
 		this.renderTabs(tabList);
 
+		// マウスカーソルの表示/非表示を制御
+		const modalEl = this.modalEl;
+
+		// マウス移動でカーソルを表示
+		modalEl.addEventListener('mousemove', () => {
+			modalEl.removeClass('is-keyboard-mode');
+		});
+
+		// キーボード操作でカーソルを非表示
+		const enableKeyboardMode = () => {
+			modalEl.addClass('is-keyboard-mode');
+		};
+
 		// キーボードイベント
 		this.scope.register([], 'ArrowUp', () => {
+			enableKeyboardMode();
 			this.moveSelection(-1);
 			return false;
 		});
 
 		this.scope.register([], 'ArrowDown', () => {
+			enableKeyboardMode();
 			this.moveSelection(1);
 			return false;
 		});
@@ -49,11 +64,13 @@ class TabPaletteModal extends Modal {
 		});
 
 		this.scope.register([], 'w', () => {
+			enableKeyboardMode();
 			this.closeSelectedTab();
 			return false;
 		});
 
 		this.scope.register([], 'p', () => {
+			enableKeyboardMode();
 			this.pinSelectedTab();
 			return false;
 		});
