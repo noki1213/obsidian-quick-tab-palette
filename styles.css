@@ -1,9 +1,9 @@
 /* タブパレットモーダル */
 .tab-palette-modal {
 	padding: 20px;
-	max-width: 600px;
+	max-width: 800px;
 	width: 100%;
-	max-height: 80vh;
+	max-height: 90vh;
 	overflow-y: auto;
 }
 
@@ -19,6 +19,15 @@
 
 .modal.is-keyboard-mode * {
 	cursor: none;
+}
+
+/* キーボード操作中はホバー効果を無効化 */
+.modal.is-keyboard-mode .tab-palette-item:hover {
+	background-color: transparent;
+}
+
+.modal.is-keyboard-mode .tab-palette-bookmark-item:hover {
+	background-color: transparent;
 }
 
 /* タブリスト */

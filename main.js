@@ -256,6 +256,17 @@ class TabPaletteModal extends Modal {
 		if (bookmarkContainer) {
 			this.renderBookmarks(bookmarkContainer);
 		}
+		
+		// 選択項目を表示範囲内にスクロール
+		this.scrollToSelected();
+	}
+	
+	// 選択中の項目をスクロールして表示
+	scrollToSelected() {
+		const selectedEl = this.contentEl.querySelector('.is-selected');
+		if (selectedEl) {
+			selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		}
 	}
 
 	// 選択中のタブを開く
