@@ -16,6 +16,8 @@ class TabPaletteModal extends Modal {
 		this.plugin = plugin;
 		this.selectedIndex = 0;
 		this.tabs = [];
+		this.bookmarks = [];
+		this.allItems = []; // tabs と bookmarks を統合したリスト
 	}
 
 	onOpen() {
@@ -24,6 +26,15 @@ class TabPaletteModal extends Modal {
 
 		// Get the list of tabs
 		this.tabs = this.getFilteredTabs();
+		
+		// Get the bookmarks
+		this.bookmarks = this.getBookmarks();
+		
+		// Build the combined list (tabs + bookmarks)
+		this.allItems = [
+			...this.tabs.map(tab => ({ type: 'tab', data: tab })),
+			...this.bookmarks.map(bookmark => ({ type: 'bookmark', data: bookmark }))
+		];
 
 		// Title
 		contentEl.createEl('h3', { text: 'Open Tabs' });
@@ -33,8 +44,7 @@ class TabPaletteModal extends Modal {
 		this.renderTabs(tabList);
 
 		// Bookmarks section
-		const bookmarks = this.getBookmarks();
-		if (bookmarks.length > 0) {
+		if (this.bookmarks.length > 0) {
 			// Divider
 			contentEl.createEl('hr', { cls: 'tab-palette-separator' });
 
@@ -43,7 +53,7 @@ class TabPaletteModal extends Modal {
 
 			// Bookmark list
 			const bookmarkList = contentEl.createDiv('tab-palette-bookmark-list');
-			this.renderBookmarks(bookmarkList, bookmarks);
+			this.renderBookmarks(bookmarkList);
 		}
 
 		// Control whether the mouse cursor is shown or hidden
@@ -144,6 +154,7 @@ class TabPaletteModal extends Modal {
 		this.tabs.forEach((tab, index) => {
 			const tabEl = container.createDiv('tab-palette-item');
 
+			// Check the selection state within the combined list
 			if (index === this.selectedIndex) {
 				tabEl.addClass('is-selected');
 			}
@@ -230,58 +241,91 @@ class TabPaletteModal extends Modal {
 	moveSelection(direction) {
 		this.selectedIndex += direction;
 
+		// Loop over the length of the combined list
+		const totalItems = this.allItems.length;
 		if (this.selectedIndex < 0) {
-			this.selectedIndex = this.tabs.length - 1;
-		} else if (this.selectedIndex >= this.tabs.length) {
+			this.selectedIndex = totalItems - 1;
+		} else if (this.selectedIndex >= totalItems) {
 			this.selectedIndex = 0;
 		}
 
-		// Re-render
-		const container = this.contentEl.querySelector('.tab-palette-list');
-		this.renderTabs(container);
+		// Re-render both lists
+		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
+		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
+		this.renderTabs(tabContainer);
+		if (bookmarkContainer) {
+			this.renderBookmarks(bookmarkContainer);
+		}
 	}
 
 	// Open the currently selected tab
 	openSelectedTab() {
-		const tab = this.tabs[this.selectedIndex];
-		if (tab) {
-			this.app.workspace.setActiveLeaf(tab.leaf, { focus: true });
-			this.close();
+		const selectedItem = this.allItems[this.selectedIndex];
+		if (!selectedItem) return;
+		
+		if (selectedItem.type === 'tab') {
+			// For a tab: make that tab active
+			this.app.workspace.setActiveLeaf(selectedItem.data.leaf, { focus: true });
+		} else {
+			// For a bookmark: open the file
+			this.app.workspace.openLinkText(selectedItem.data.path, '', false);
 		}
+		this.close();
 	}
 
 	// Close the currently selected tab
 	closeSelectedTab() {
-		const tab = this.tabs[this.selectedIndex];
-		if (tab) {
-			tab.leaf.detach();
-			this.tabs.splice(this.selectedIndex, 1);
+		const selectedItem = this.allItems[this.selectedIndex];
+		if (!selectedItem || selectedItem.type !== 'tab') return; // タブのみ閉じられる
+		
+		const tab = selectedItem.data;
+		tab.leaf.detach();
+		
+		// Remove from the tabs array
+		const tabIndex = this.tabs.indexOf(tab);
+		if (tabIndex !== -1) {
+			this.tabs.splice(tabIndex, 1);
+		}
+		
+		// Rebuild allItems
+		this.allItems = [
+			...this.tabs.map(t => ({ type: 'tab', data: t })),
+			...this.bookmarks.map(b => ({ type: 'bookmark', data: b }))
+		];
 
-			if (this.selectedIndex >= this.tabs.length) {
-				this.selectedIndex = Math.max(0, this.tabs.length - 1);
-			}
+		if (this.selectedIndex >= this.allItems.length) {
+			this.selectedIndex = Math.max(0, this.allItems.length - 1);
+		}
 
-			// Close once there are no tabs left
-			if (this.tabs.length === 0) {
-				this.close();
-			} else {
-				// Re-render
-				const container = this.contentEl.querySelector('.tab-palette-list');
-				this.renderTabs(container);
+		// Close once there are no tabs left
+		if (this.allItems.length === 0) {
+			this.close();
+		} else {
+			// Re-render
+			const tabContainer = this.contentEl.querySelector('.tab-palette-list');
+			const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
+			this.renderTabs(tabContainer);
+			if (bookmarkContainer) {
+				this.renderBookmarks(bookmarkContainer);
 			}
 		}
 	}
 
 	// Pin/unpin the currently selected tab
 	pinSelectedTab() {
-		const tab = this.tabs[this.selectedIndex];
-		if (tab) {
-			tab.leaf.setPinned(!tab.isPinned);
-			tab.isPinned = !tab.isPinned;
+		const selectedItem = this.allItems[this.selectedIndex];
+		if (!selectedItem || selectedItem.type !== 'tab') return; // タブのみピン可能
+		
+		const tab = selectedItem.data;
+		tab.leaf.setPinned(!tab.isPinned);
+		tab.isPinned = !tab.isPinned;
 
-			// Re-render
-			const container = this.contentEl.querySelector('.tab-palette-list');
-			this.renderTabs(container);
+		// Re-render
+		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
+		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
+		this.renderTabs(tabContainer);
+		if (bookmarkContainer) {
+			this.renderBookmarks(bookmarkContainer);
 		}
 	}
 
@@ -340,11 +384,17 @@ class TabPaletteModal extends Modal {
 	}
 
 	// Show the bookmarks
-	renderBookmarks(container, bookmarks) {
+	renderBookmarks(container) {
 		container.empty();
 
-		bookmarks.forEach((bookmark) => {
+		this.bookmarks.forEach((bookmark, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
+			
+			// Check the selection state within the combined list (tabs.length + index)
+			const globalIndex = this.tabs.length + index;
+			if (globalIndex === this.selectedIndex) {
+				itemEl.addClass('is-selected');
+			}
 
 			// Main single-row container
 			const entryEl = itemEl.createDiv('tab-palette-entry');
@@ -400,8 +450,8 @@ class TabPaletteModal extends Modal {
 
 			// Click event
 			itemEl.addEventListener('click', () => {
-				this.app.workspace.openLinkText(bookmark.path, '', false);
-				this.close();
+				this.selectedIndex = globalIndex;
+				this.openSelectedTab();
 			});
 		});
 	}
