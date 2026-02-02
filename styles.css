@@ -146,6 +146,11 @@
 	background-color: var(--background-modifier-hover);
 }
 
+.tab-palette-bookmark-item.is-selected {
+	background-color: var(--background-modifier-active-hover);
+	border-color: var(--interactive-accent);
+}
+
 /* スターアイコン */
 .tab-palette-star-icon {
 	display: inline-flex;
