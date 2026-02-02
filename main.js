@@ -26,11 +26,25 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getFilteredTabs();
 
 		// タイトル
-		contentEl.createEl('h3', { text: 'Tab Palette' });
+		contentEl.createEl('h3', { text: 'Open Tabs' });
 
 		// タブリスト
 		const tabList = contentEl.createDiv('tab-palette-list');
 		this.renderTabs(tabList);
+
+		// ブックマークセクション
+		const bookmarks = this.getBookmarks();
+		if (bookmarks.length > 0) {
+			// 区切り線
+			contentEl.createEl('hr', { cls: 'tab-palette-separator' });
+
+			// ブックマークタイトル
+			contentEl.createEl('h3', { text: 'Bookmarks' });
+
+			// ブックマークリスト
+			const bookmarkList = contentEl.createDiv('tab-palette-bookmark-list');
+			this.renderBookmarks(bookmarkList, bookmarks);
+		}
 
 		// マウスカーソルの表示/非表示を制御
 		const modalEl = this.modalEl;
@@ -102,7 +116,8 @@ class TabPaletteModal extends Modal {
 							file: file,
 							name: file.basename,
 							path: file.path,
-							isPinned: leaf.pinned
+							isPinned: leaf.pinned,
+							isBookmarked: this.isFileBookmarked(file.path)
 						});
 					}
 				}
@@ -147,6 +162,12 @@ class TabPaletteModal extends Modal {
 			if (tab.isPinned) {
 				const pinIcon = leftEl.createSpan('tab-palette-pin-icon');
 				setIcon(pinIcon, 'pin');
+			}
+
+			// ブックマークアイコン
+			if (tab.isBookmarked) {
+				const starIcon = leftEl.createSpan('tab-palette-star-icon');
+				setIcon(starIcon, 'star');
 			}
 
 			// タブ名
@@ -262,6 +283,127 @@ class TabPaletteModal extends Modal {
 			const container = this.contentEl.querySelector('.tab-palette-list');
 			this.renderTabs(container);
 		}
+	}
+
+	// ファイルがブックマークされているかチェック
+	isFileBookmarked(filePath) {
+		const bookmarkPlugin = this.app.internalPlugins?.plugins?.bookmarks;
+
+		if (!bookmarkPlugin || !bookmarkPlugin.enabled) {
+			return false;
+		}
+
+		const bookmarkItems = bookmarkPlugin.instance?.items || [];
+
+		return bookmarkItems.some(item => {
+			return item.type === 'file' && item.path === filePath;
+		});
+	}
+
+	// ブックマークを取得
+	getBookmarks() {
+		const bookmarks = [];
+		const bookmarkPlugin = this.app.internalPlugins?.plugins?.bookmarks;
+
+		if (!bookmarkPlugin || !bookmarkPlugin.enabled) {
+			return bookmarks;
+		}
+
+		const bookmarkItems = bookmarkPlugin.instance?.items || [];
+
+		bookmarkItems.forEach(item => {
+			// ファイルのブックマークのみを取得
+			if (item.type === 'file' && item.path) {
+				const file = this.app.vault.getAbstractFileByPath(item.path);
+				if (file) {
+					// 除外フォルダのチェック
+					let isExcluded = false;
+					for (const folder of this.plugin.settings.excludedFolders) {
+						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
+							isExcluded = true;
+							break;
+						}
+					}
+
+					if (!isExcluded) {
+						bookmarks.push({
+							file: file,
+							name: file.basename,
+							path: file.path
+						});
+					}
+				}
+			}
+		});
+
+		return bookmarks;
+	}
+
+	// ブックマークを表示
+	renderBookmarks(container, bookmarks) {
+		container.empty();
+
+		bookmarks.forEach((bookmark) => {
+			const itemEl = container.createDiv('tab-palette-bookmark-item');
+
+			// メインの1行コンテナ
+			const entryEl = itemEl.createDiv('tab-palette-entry');
+
+			// 左側：スターアイコン + ファイル名
+			const leftEl = entryEl.createDiv('tab-palette-left');
+
+			// スターアイコン
+			const starIcon = leftEl.createSpan('tab-palette-star-icon');
+			setIcon(starIcon, 'star');
+
+			// ファイル名
+			const nameText = leftEl.createSpan('tab-palette-name-text');
+			nameText.setText(bookmark.name);
+
+			// タグ（ブックマークにもタグを表示）
+			if (this.plugin.settings.showTags) {
+				const cache = this.app.metadataCache.getFileCache(bookmark.file);
+				const allTags = [];
+
+				if (cache && cache.tags) {
+					allTags.push(...cache.tags.map(t => t.tag));
+				}
+
+				if (cache && cache.frontmatter && cache.frontmatter.tags) {
+					const fmTags = cache.frontmatter.tags;
+					if (Array.isArray(fmTags)) {
+						allTags.push(...fmTags.map(t => '#' + t));
+					} else if (typeof fmTags === 'string') {
+						allTags.push('#' + fmTags);
+					}
+				}
+
+				if (allTags.length > 0) {
+					const tagsEl = leftEl.createSpan('tab-palette-tags');
+					tagsEl.setText(allTags.join(' '));
+				}
+			}
+
+			// 右側：パス
+			if (this.plugin.settings.showPath) {
+				const rightEl = entryEl.createDiv('tab-palette-right');
+
+				const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
+				setIcon(folderIcon, 'folder');
+
+				const pathEl = rightEl.createSpan('tab-palette-path');
+				const pathParts = bookmark.path.split('/');
+				pathParts.pop();
+				const dirPath = pathParts.join('/') || '/';
+				pathEl.setText(dirPath);
+			}
+
+			// クリックイベント
+			itemEl.addEventListener('click', () => {
+				this.app.workspace.openLinkText(bookmark.path, '', false);
+				this.close();
+			});
+		});
 	}
 
 	onClose() {
