@@ -32,13 +32,28 @@ class TabPaletteModal extends Modal {
 		const tabList = contentEl.createDiv('tab-palette-list');
 		this.renderTabs(tabList);
 
+		// Control whether the mouse cursor is shown or hidden
+		const modalEl = this.modalEl;
+
+		// Show the cursor on mouse movement
+		modalEl.addEventListener('mousemove', () => {
+			modalEl.removeClass('is-keyboard-mode');
+		});
+
+		// Hide the cursor during keyboard navigation
+		const enableKeyboardMode = () => {
+			modalEl.addClass('is-keyboard-mode');
+		};
+
 		// Keyboard event
 		this.scope.register([], 'ArrowUp', () => {
+			enableKeyboardMode();
 			this.moveSelection(-1);
 			return false;
 		});
 
 		this.scope.register([], 'ArrowDown', () => {
+			enableKeyboardMode();
 			this.moveSelection(1);
 			return false;
 		});
@@ -49,11 +64,13 @@ class TabPaletteModal extends Modal {
 		});
 
 		this.scope.register([], 'w', () => {
+			enableKeyboardMode();
 			this.closeSelectedTab();
 			return false;
 		});
 
 		this.scope.register([], 'p', () => {
+			enableKeyboardMode();
 			this.pinSelectedTab();
 			return false;
 		});
