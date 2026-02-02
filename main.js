@@ -256,6 +256,17 @@ class TabPaletteModal extends Modal {
 		if (bookmarkContainer) {
 			this.renderBookmarks(bookmarkContainer);
 		}
+		
+		// Scroll the selected item into view
+		this.scrollToSelected();
+	}
+	
+	// Scroll to show the currently selected item
+	scrollToSelected() {
+		const selectedEl = this.contentEl.querySelector('.is-selected');
+		if (selectedEl) {
+			selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		}
 	}
 
 	// Open the currently selected tab
