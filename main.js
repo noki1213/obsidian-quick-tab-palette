@@ -9,8 +9,8 @@ const DEFAULT_SETTINGS = {
 	alwaysOpenInNewTab: false,
 	recentlyClosed: [], // 最近閉じたタブの履歴
 	enableDailyNotes: true,
-	dailyNoteFormat: 'YYYY-MM-DD (ddd)',
-	dailyNoteFolder: '00_DailyNote'
+	dailyNoteFormat: '',
+	dailyNoteFolder: ''
 };
 
 // タブパレットモーダル
@@ -710,11 +710,11 @@ class TabPaletteModal extends Modal {
 			this.app.workspace.setActiveLeaf(leaf, { focus: true });
 			this.close();
 		} else if (fileToOpen) {
-			// ファイルを開く（既存のタブがあればそこに移動、なければ新規タブなど設定に従う）
-			// タブパレットの「常に新規タブで開く」設定を確認
-			// しかしここはシンプルに openLinkText でいいか、あるいは getLeaf で制御するか
-			// AQSや標準スイッチャーの挙動に合わせるなら openLinkText
-			const leaf = this.app.workspace.getLeaf(false);
+			// ファイルを開く
+			// 設定を確認して、常に新しいタブで開くか判断
+			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
+			
+			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
 			leaf.openFile(fileToOpen);
 			this.close();
 		} else {
@@ -885,8 +885,8 @@ class TabPaletteModal extends Modal {
 		}
 
 		const dailyNotes = [];
-		const format = this.plugin.settings.dailyNoteFormat;
-		const folder = this.plugin.settings.dailyNoteFolder;
+		const format = this.plugin.settings.dailyNoteFormat || 'YYYY-MM-DD (ddd)';
+		const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 		
 		// moment.js を require （Obsidian に含まれている）
 		const moment = window.moment;
@@ -984,7 +984,7 @@ class TabPaletteModal extends Modal {
 			}
 			
 			// フォルダが存在しない場合は作成
-			const folder = this.plugin.settings.dailyNoteFolder;
+			const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 			if (folder) {
 				const folderExists = this.app.vault.getAbstractFileByPath(folder);
 				if (!folderExists) {
@@ -1209,36 +1209,6 @@ class TabPalettePlugin extends Plugin {
 
 		// 設定タブ
 		this.addSettingTab(new TabPaletteSettingTab(this.app, this));
-
-		// Always open in new tab 機能のモンキーパッチ
-		this.registerMonkeyPatches();
-	}
-
-	// Workspace.getLeaf をオーバーライドして、常に新しいタブで開くようにする
-	registerMonkeyPatches() {
-		const plugin = this;
-
-		// 元の getLeaf メソッドを保存
-		const originalGetLeaf = Workspace.prototype.getLeaf;
-
-		// getLeaf をオーバーライド
-		Workspace.prototype.getLeaf = function(newLeaf) {
-			// always open in new tab が有効な場合は、常に新しいタブで開く
-			if (plugin.settings.alwaysOpenInNewTab) {
-				// newLeaf が false または undefined の場合は、'tab' に変更
-				if (!newLeaf) {
-					newLeaf = 'tab';
-				}
-			}
-
-			// 元のメソッドを呼び出す
-			return originalGetLeaf.call(this, newLeaf);
-		};
-
-		// プラグインがアンロードされたときに元に戻す
-		this.register(() => {
-			Workspace.prototype.getLeaf = originalGetLeaf;
-		});
 	}
 
 	// 現在開いているタブの情報を取得
