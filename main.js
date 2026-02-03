@@ -58,7 +58,7 @@ class TabPaletteModal extends Modal {
 		this.renderAll();
 
 		// マウスカーソルの表示/非表示を制御
-		const modalEl = this.modalEl;
+		// const modalEl = this.modalEl; // 削除
 
 		// マウス移動でカーソルを表示
 		modalEl.addEventListener('mousemove', () => {
