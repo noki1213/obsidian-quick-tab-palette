@@ -46,16 +46,10 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getTabs();
 		this.bookmarks = this.getBookmarksList();
 		
-		// Initial filtering (show all)
-		this.performSearch('');
-
-		// Create the search box
-		const searchContainer = contentEl.createDiv('tab-palette-search-container');
-		this.searchInput = searchContainer.createEl('input', {
-			type: 'text',
-			cls: 'tab-palette-search-input',
-			placeholder: 'Search tabs, bookmarks, and vault...'
-		});
+		// Initial state (show all)
+		this.filteredTabs = this.tabs;
+		this.filteredBookmarks = this.bookmarks;
+		this.searchResults = []; // 初期は空にするか、全件出すか。ここでは空にする。
 
 		// Create the 3-column container
 		const columnsEl = contentEl.createDiv('tab-palette-columns');
@@ -63,6 +57,15 @@ class TabPaletteModal extends Modal {
 		// --- Left column: Search ---
 		const searchColumn = columnsEl.createDiv('tab-palette-column');
 		searchColumn.createEl('h3', { text: 'Vault Search' });
+		
+		// Place the search box inside the left column
+		const searchContainer = searchColumn.createDiv('tab-palette-search-container');
+		this.searchInput = searchContainer.createEl('input', {
+			type: 'text',
+			cls: 'tab-palette-search-input',
+			placeholder: 'Search vault...'
+		});
+		
 		const searchList = searchColumn.createDiv('tab-palette-search-list');
 		
 		// --- Center column: Open Tabs ---
@@ -80,12 +83,18 @@ class TabPaletteModal extends Modal {
 
 		// Set up event listeners
 		this.searchInput.addEventListener('input', (e) => {
+			// Leave this as-is if you want search to run during IME composition too.
+			// If you only want this after conversion is finalized, using the compositionend event is another option, but
+			// The input event is fine for real-time search.
 			const query = e.target.value;
 			this.performSearch(query);
 			this.renderAll();
 		});
 
 		this.searchInput.addEventListener('keydown', (e) => {
+			// Ignore Enter while IME conversion is in progress
+			if (e.isComposing) return;
+
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
 				this.searchInput.blur(); // フォーカスを外してリスト操作モードへ
@@ -121,11 +130,7 @@ class TabPaletteModal extends Modal {
 		
 		// Move between sections with the left/right keys
 		this.scope.register([], 'ArrowLeft', (e) => {
-			// When the search box has focus, cursor movement should take priority, but
-			// To prioritize the requirement "navigate back and forth with the left/right arrow keys" while keeping it intuitive
-			// When the input is focused, defer to its default behavior (cursor movement).
 			if (document.activeElement === this.searchInput) return; 
-			
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
@@ -133,7 +138,6 @@ class TabPaletteModal extends Modal {
 
 		this.scope.register([], 'ArrowRight', (e) => {
 			if (document.activeElement === this.searchInput) return;
-
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
@@ -146,14 +150,20 @@ class TabPaletteModal extends Modal {
 		
 		// On character key input, restore focus to the search box if it isn't focused
 		modalEl.addEventListener('keydown', (e) => {
+			// On IME composition start or character input
 			if (document.activeElement !== this.searchInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				// Exclude arrow keys and the like
 				this.searchInput.focus();
+				// Whether to switch activeSection to search here is a matter of preference, but
+				// From a UX standpoint the user is trying to search, so moving to search might feel more natural?
+				this.activeSection = 'search';
+				this.renderAll();
 			}
 		});
 
 		// Initial focus and scroll position
 		this.searchInput.focus();
-		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
+		this.activeSection = 'tabs'; // 初期選択はOpen Tabs（要望通り）
 		this.renderAll();
 		
 		// Adjust scroll so the middle column is visible
@@ -166,27 +176,19 @@ class TabPaletteModal extends Modal {
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
 		
-		// 1. Filter tabs
-		this.filteredTabs = this.tabs.filter(tab => this.matchFile(tab.file, this.searchQuery));
+		// 1. Filter tabs -> skip it (search results shouldn't be affected by this)
+		this.filteredTabs = this.tabs;
 		
-		// 2. Filter bookmarks
-		this.filteredBookmarks = this.bookmarks.filter(b => this.matchFile(b.file, this.searchQuery));
+		// 2. Filter bookmarks -> skip it
+		this.filteredBookmarks = this.bookmarks;
 		
-		// 3. Search results (search outside of tabs and bookmarks)
-		// Build a set of paths to avoid duplicates
-		const openPaths = new Set(this.tabs.map(t => t.path));
-		// Whether to include bookmarks too is a matter of preference, but since AQS-like behavior means "search everything," it's fine to include them, though
-		// Since the UI is split into columns, it might be more useful for the left column to hold "everything else."
-		// But since the requirement is "search the whole vault," showing it even when duplicated is probably correct.
-		// Should the logic here prioritize "files not yet shown, with duplicates removed"?
-		// Actually, since this is meant to be "Search (whole vault)," show it even if it's a duplicate.
-		
+		// 3. Search results (across the whole vault)
 		if (!this.searchQuery) {
-			this.searchResults = []; // クエリなしの時は検索結果なし（最近使ったファイルとか出す手もあるが）
+			this.searchResults = []; 
 		} else {
 			this.searchResults = this.vaultFiles
 				.filter(file => this.matchFile(file, this.searchQuery))
-				.slice(0, 50); // パフォーマンスのため件数制限
+				.slice(0, 50);
 		}
 		
 		// Reset and correct the index
