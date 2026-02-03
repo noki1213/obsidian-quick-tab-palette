@@ -728,7 +728,7 @@ class TabPaletteModal extends Modal {
 		if (this.activeSection !== 'tabs') return;
 		
 		const tab = this.filteredTabs[this.selectedTabIndex];
-		if (!tab) return;
+		if (!tab || !tab.file) return;
 		
 		// Recently Closed に追加（既に閉じられているタブでなければ）
 		if (tab.leaf) {
@@ -751,9 +751,9 @@ class TabPaletteModal extends Modal {
 			
 			this.plugin.settings.recentlyClosed = updatedHistory;
 			this.plugin.saveSettings();
+
+			tab.leaf.detach();
 		}
-		
-		tab.leaf.detach();
 		
 		// データ更新
 		this.tabs = this.getTabs();
@@ -766,7 +766,7 @@ class TabPaletteModal extends Modal {
 		if (this.activeSection !== 'tabs') return;
 		
 		const tab = this.filteredTabs[this.selectedTabIndex];
-		if (!tab) return;
+		if (!tab || !tab.leaf) return;
 		
 		tab.leaf.setPinned(!tab.isPinned);
 		tab.isPinned = !tab.isPinned; // ローカル更新

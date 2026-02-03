@@ -8,6 +8,12 @@
   "alwaysOpenInNewTab": true,
   "recentlyClosed": [
     {
+      "path": "10_英語/TheRules1_1.md",
+      "title": "TheRules1_1",
+      "basename": "TheRules1_1",
+      "extension": "md"
+    },
+    {
       "path": "00_DailyNote/2026-02-02 (月).md",
       "title": "2026-02-02 (月)",
       "basename": "2026-02-02 (月)",
@@ -29,12 +35,6 @@
       "path": "Inbox/英語本棚.md",
       "title": "英語本棚",
       "basename": "英語本棚",
-      "extension": "md"
-    },
-    {
-      "path": "Inbox/生協/あんたっぷりたい焼　十勝産小豆使用.md",
-      "title": "あんたっぷりたい焼　十勝産小豆使用",
-      "basename": "あんたっぷりたい焼　十勝産小豆使用",
       "extension": "md"
     }
   ],
