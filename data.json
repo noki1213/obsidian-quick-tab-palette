@@ -40,5 +40,7 @@
   ],
   "enableDailyNotes": true,
   "dailyNoteFormat": "YYYY-MM-DD (ddd)",
-  "dailyNoteFolder": "00_DailyNote"
+  "dailyNoteFolder": "00_DailyNote",
+  "enableSearch": true,
+  "enableTabs": true
 }
