@@ -7,7 +7,10 @@ const DEFAULT_SETTINGS = {
 	showPath: true,
 	sortOrder: 'recency', // 'recency' または 'opening-order'
 	alwaysOpenInNewTab: false,
-	recentlyClosed: [] // 最近閉じたタブの履歴
+	recentlyClosed: [], // 最近閉じたタブの履歴
+	enableDailyNotes: true,
+	dailyNoteFormat: 'YYYY-MM-DD (ddd)',
+	dailyNoteFolder: '00_DailyNote'
 };
 
 // タブパレットモーダル
@@ -17,10 +20,11 @@ class TabPaletteModal extends Modal {
 		this.plugin = plugin;
 
 		// 状態管理
-		this.activeSection = 'tabs'; // 'search', 'tabs', 'bookmarks'
+		this.activeSection = 'tabs'; // 'search', 'tabs', 'bookmarks', 'dailyNotes'
 		this.selectedTabIndex = 0;
 		this.selectedBookmarkIndex = 0;
 		this.selectedSearchIndex = 0;
+		this.selectedDailyNoteIndex = 0;
 
 		this.searchQuery = '';
 		this.vaultFiles = []; // 全ファイルキャッシュ
@@ -28,6 +32,7 @@ class TabPaletteModal extends Modal {
 		this.filteredTabs = [];
 		this.filteredBookmarks = [];
 		this.searchResults = [];
+		this.dailyNotes = [];
 
 		this.tabs = [];
 		this.bookmarks = [];
@@ -49,6 +54,7 @@ class TabPaletteModal extends Modal {
 		// データ初期取得
 		this.tabs = this.getTabs();
 		this.bookmarks = this.getBookmarksList();
+		this.dailyNotes = this.getDailyNotes();
 		
 		// 初期状態（全件表示）
 		this.filteredTabs = this.tabs;
@@ -77,10 +83,18 @@ class TabPaletteModal extends Modal {
 		tabsColumn.createEl('h3', { text: 'Tabs' });
 		const tabList = tabsColumn.createDiv('tab-palette-list');
 		
-		// --- 右カラム：Bookmarks ---
+		// --- 右カラム：Bookmarks & Daily Notes ---
 		const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
 		bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
 		const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
+		
+		// Daily Notes セクション
+		if (this.plugin.settings.enableDailyNotes) {
+			const divider = bookmarksColumn.createEl('hr', { cls: 'tab-palette-section-divider' });
+			const dailyNotesTitle = bookmarksColumn.createEl('h3', { text: 'Daily Notes' });
+			dailyNotesTitle.addClass('daily-notes-title');
+			const dailyNoteList = bookmarksColumn.createDiv('tab-palette-daily-note-list');
+		}
 
 		// 初回描画
 		this.renderAll();
@@ -251,10 +265,12 @@ class TabPaletteModal extends Modal {
 		const searchContainer = this.contentEl.querySelector('.tab-palette-search-list');
 		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
 		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
+		const dailyNoteContainer = this.contentEl.querySelector('.tab-palette-daily-note-list');
 		
 		if (searchContainer) this.renderSearchResults(searchContainer);
 		if (tabContainer) this.renderTabs(tabContainer);
 		if (bookmarkContainer) this.renderBookmarks(bookmarkContainer);
+		if (dailyNoteContainer) this.renderDailyNotes(dailyNoteContainer);
 		
 		this.scrollToSelected();
 	}
@@ -262,6 +278,9 @@ class TabPaletteModal extends Modal {
 	// セクション切り替え
 	switchSection(direction) {
 		const sections = ['search', 'tabs', 'bookmarks'];
+		if (this.plugin.settings.enableDailyNotes) {
+			sections.push('dailyNotes');
+		}
 		let currentIndex = sections.indexOf(this.activeSection);
 		
 		if (direction === 'right') {
@@ -543,11 +562,28 @@ class TabPaletteModal extends Modal {
 			this.selectedTabIndex = this.clampIndex(this.selectedTabIndex + direction, this.filteredTabs.length);
 			this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
 		} else if (this.activeSection === 'bookmarks') {
-			this.selectedBookmarkIndex = this.clampIndex(this.selectedBookmarkIndex + direction, this.filteredBookmarks.length);
-			this.renderBookmarks(this.contentEl.querySelector('.tab-palette-bookmark-list'));
+			// bookmarksの一番下でArrowDownを押したらdailyNotesへ移動
+			if (direction > 0 && this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 && this.plugin.settings.enableDailyNotes && this.dailyNotes.length > 0) {
+				this.activeSection = 'dailyNotes';
+				this.selectedDailyNoteIndex = 0;
+				this.renderAll();
+			} else {
+				this.selectedBookmarkIndex = this.clampIndex(this.selectedBookmarkIndex + direction, this.filteredBookmarks.length);
+				this.renderBookmarks(this.contentEl.querySelector('.tab-palette-bookmark-list'));
+			}
 		} else if (this.activeSection === 'search') {
 			this.selectedSearchIndex = this.clampIndex(this.selectedSearchIndex + direction, this.searchResults.length);
 			this.renderSearchResults(this.contentEl.querySelector('.tab-palette-search-list'));
+		} else if (this.activeSection === 'dailyNotes') {
+			// dailyNotesの一番上でArrowUpを押したらbookmarksへ戻る
+			if (direction < 0 && this.selectedDailyNoteIndex === 0 && this.filteredBookmarks.length > 0) {
+				this.activeSection = 'bookmarks';
+				this.selectedBookmarkIndex = this.filteredBookmarks.length - 1;
+				this.renderAll();
+			} else {
+				this.selectedDailyNoteIndex = this.clampIndex(this.selectedDailyNoteIndex + direction, this.dailyNotes.length);
+				this.renderDailyNotes(this.contentEl.querySelector('.tab-palette-daily-note-list'));
+			}
 		}
 		
 		this.scrollToSelected();
@@ -588,6 +624,16 @@ class TabPaletteModal extends Modal {
 		} else if (this.activeSection === 'search') {
 			const result = this.searchResults[this.selectedSearchIndex];
 			if (result) fileToOpen = result;
+		} else if (this.activeSection === 'dailyNotes') {
+			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
+			if (dailyNote) {
+				if (!dailyNote.exists) {
+					// ファイルが存在しない場合は作成確認
+					this.createDailyNote(dailyNote);
+					return;
+				}
+				fileToOpen = dailyNote.file;
+			}
 		}
 
 		if (leaf) {
@@ -710,6 +756,133 @@ class TabPaletteModal extends Modal {
 		return bookmarks;
 	}
 	
+	// デイリーノートを取得
+	getDailyNotes() {
+		if (!this.plugin.settings.enableDailyNotes) {
+			return [];
+		}
+
+		const dailyNotes = [];
+		const format = this.plugin.settings.dailyNoteFormat;
+		const folder = this.plugin.settings.dailyNoteFolder;
+		
+		// moment.js を require （Obsidian に含まれている）
+		const moment = window.moment;
+		
+		const today = moment();
+		const dates = [
+			{ label: 'Yesterday', date: today.clone().subtract(1, 'day') },
+			{ label: 'Today', date: today.clone() },
+			{ label: 'Tomorrow', date: today.clone().add(1, 'day') }
+		];
+		
+		dates.forEach(({ label, date }) => {
+			const filename = date.format(format) + '.md';
+			const path = folder ? folder + '/' + filename : filename;
+			
+			const file = this.app.vault.getAbstractFileByPath(path);
+			
+			// ファイルが存在しなくても配列に追加（exists フラグで管理）
+			dailyNotes.push({
+				file: file,
+				name: file ? file.basename : date.format(format),
+				path: path,
+				label: label,
+				date: date.format('YYYY-MM-DD'),
+				exists: !!file, // ファイルの存在フラグ
+				momentDate: date // 作成時に使用
+			});
+		});
+		
+		return dailyNotes;
+	}
+
+	// デイリーノートをレンダリング
+	renderDailyNotes(container) {
+		container.empty();
+		
+		if (this.dailyNotes.length === 0) {
+			container.createDiv({ text: 'No daily notes', cls: 'tab-palette-empty-message' });
+			return;
+		}
+		
+		this.dailyNotes.forEach((dailyNote, index) => {
+			const itemEl = container.createDiv('tab-palette-bookmark-item');
+			
+			// 存在しない場合はグレー表示
+			if (!dailyNote.exists) {
+				itemEl.addClass('daily-note-not-exists');
+			}
+			
+			if (this.activeSection === 'dailyNotes' && index === this.selectedDailyNoteIndex) {
+				itemEl.addClass('is-selected');
+			}
+			
+			// ファイル名で表示、ラベルは右側に
+			const entryEl = itemEl.createDiv('tab-palette-entry');
+			const leftEl = entryEl.createDiv('tab-palette-left');
+			
+			// ファイル名を表示
+			const nameText = leftEl.createSpan('tab-palette-name-text');
+			nameText.setText(dailyNote.name);
+			
+			// 右側にラベル（Today/Yesterday/Tomorrow）を表示
+			const rightEl = entryEl.createDiv('tab-palette-right');
+			const labelEl = rightEl.createSpan('tab-palette-daily-note-label');
+			labelEl.setText(dailyNote.label);
+			
+			itemEl.addEventListener('click', () => {
+				this.activeSection = 'dailyNotes';
+				this.selectedDailyNoteIndex = index;
+				this.openSelectedTab();
+			});
+		});
+	}
+	
+	// デイリーノート作成
+	async createDailyNote(dailyNote) {
+		const confirmed = confirm(`デイリーノート「${dailyNote.name}」を作成しますか？`);
+		if (!confirmed) return;
+		
+		try {
+			// テンプレートパスを取得（設定から）
+			const dailyNotesPlugin = this.app.internalPlugins?.plugins?.['daily-notes'];
+			let templatePath = '';
+			if (dailyNotesPlugin && dailyNotesPlugin.instance) {
+				templatePath = dailyNotesPlugin.instance.options?.template || '';
+			}
+			
+			// ファイル作成
+			let content = '';
+			if (templatePath) {
+				const templateFile = this.app.vault.getAbstractFileByPath(templatePath + '.md');
+				if (templateFile) {
+					content = await this.app.vault.read(templateFile);
+				}
+			}
+			
+			// フォルダが存在しない場合は作成
+			const folder = this.plugin.settings.dailyNoteFolder;
+			if (folder) {
+				const folderExists = this.app.vault.getAbstractFileByPath(folder);
+				if (!folderExists) {
+					await this.app.vault.createFolder(folder);
+				}
+			}
+			
+			// ファイル作成
+			const newFile = await this.app.vault.create(dailyNote.path, content);
+			
+			// ファイルを開く
+			const leaf = this.app.workspace.getLeaf(false);
+			await leaf.openFile(newFile);
+			
+			this.close();
+		} catch (error) {
+			new Notice(`デイリーノートの作成に失敗しました: ${error.message}`);
+		}
+	}
+	
 	// 後方互換性のため残す（使わない）
 	getBookmarks() { return this.getBookmarksList(); }
 
@@ -790,6 +963,41 @@ class TabPaletteSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.alwaysOpenInNewTab)
 				.onChange(async (value) => {
 					this.plugin.settings.alwaysOpenInNewTab = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// デイリーノートを有効化
+		new Setting(containerEl)
+			.setName('デイリーノートセクションを表示')
+			.setDesc('タブパレットにデイリーノート（昨日・今日・明日）を表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableDailyNotes)
+				.onChange(async (value) => {
+					this.plugin.settings.enableDailyNotes = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// デイリーノート日付フォーマット
+		new Setting(containerEl)
+			.setName('デイリーノート日付フォーマット')
+			.setDesc('moment.js形式（例: YYYY-MM-DD (ddd)）')
+			.addText(text => text
+				.setPlaceholder('YYYY-MM-DD (ddd)')
+				.setValue(this.plugin.settings.dailyNoteFormat)
+				.onChange(async (value) => {
+					this.plugin.settings.dailyNoteFormat = value || 'YYYY-MM-DD (ddd)';
+					await this.plugin.saveSettings();
+				}));
+
+		// デイリーノート保存先フォルダ
+		new Setting(containerEl)
+			.setName('デイリーノート保存先フォルダ')
+			.setDesc('デイリーノートが保存されているフォルダパス')
+			.addText(text => text
+				.setPlaceholder('00_DailyNote')
+				.setValue(this.plugin.settings.dailyNoteFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.dailyNoteFolder = value || '00_DailyNote';
 					await this.plugin.saveSettings();
 				}));
 	}
