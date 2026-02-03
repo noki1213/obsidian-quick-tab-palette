@@ -1,10 +1,15 @@
-/* Tab palette modal */
+/* Overall modal size adjustment */
+.modal.mod-tab-palette {
+	width: 95vw !important;
+	max-width: 1600px !important;
+	height: 85vh !important;
+	max-height: 90vh !important;
+}
+
+/* Tab palette modal (content area) */
 .tab-palette-modal {
-	padding: 20px;
-	max-width: 90vw; /* 横幅を広げる */
-	width: 1000px;
-	height: 80vh; /* 高さ固定 */
-	max-height: 80vh;
+	padding: 10px; /* パディングを少し減らす */
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 }
