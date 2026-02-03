@@ -161,11 +161,16 @@ class TabPaletteModal extends Modal {
 			}
 		});
 
-		// 初期フォーカスとスクロール位置
-		this.searchInput.focus();
-		this.activeSection = 'tabs'; // 初期選択はOpen Tabs（要望通り）
-		this.renderAll();
-		
+		        // 初期フォーカスとスクロール位置
+		        this.activeSection = 'tabs'; // 初期選択はOpen Tabs
+		        this.selectedTabIndex = 0;
+		        
+		        // 検索窓のフォーカスは外す
+		        this.searchInput.blur();
+		        // モーダル自体にフォーカスを当てておく（キーイベントを受け取るため）
+		        this.modalEl.focus(); 
+		        
+		        this.renderAll();		
 		// 真ん中のカラムが見えるようにスクロール調整
 		setTimeout(() => {
 			tabsColumn.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
