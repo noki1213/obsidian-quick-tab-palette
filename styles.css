@@ -30,7 +30,7 @@
 
 /* カラム */
 .tab-palette-column {
-	flex: 1;
+	flex: 1 1 0; /* コンテンツ幅に依存せず均等に分割 */
 	display: flex;
 	flex-direction: column;
 	min-width: 0; /* 子要素のオーバーフロー防止 */
