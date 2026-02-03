@@ -30,7 +30,7 @@
 
 /* Column */
 .tab-palette-column {
-	flex: 1;
+	flex: 1 1 0; /* Split evenly, independent of content width */
 	display: flex;
 	flex-direction: column;
 	min-width: 0; /* Prevent child overflow */
