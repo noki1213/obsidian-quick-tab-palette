@@ -96,6 +96,10 @@ class TabPaletteModal extends Modal {
 			const dailyNoteList = bookmarksColumn.createDiv('tab-palette-daily-note-list');
 		}
 
+		// Add the keybinding help at the very bottom
+		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
+		helpFooter.createSpan().setText('w: Close  |  p: Toggle Pin  |  b: Toggle Bookmark');
+
 		// Initial render
 		this.renderAll();
 
@@ -715,6 +719,7 @@ class TabPaletteModal extends Modal {
 		const bookmarkPlugin = this.app.internalPlugins?.plugins?.bookmarks;
 
 		if (!bookmarkPlugin || !bookmarkPlugin.enabled) {
+			new Notice('Bookmark plugin is not enabled');
 			return;
 		}
 
@@ -737,17 +742,20 @@ class TabPaletteModal extends Modal {
 		if (!file) return;
 
 		const bookmarkItems = bookmarkPlugin.instance?.items || [];
-		const isBookmarked = bookmarkItems.some(item => item.type === 'file' && item.path === file.path);
+		const existingBookmark = bookmarkItems.find(item => item.type === 'file' && item.path === file.path);
 
-		if (isBookmarked) {
+		if (existingBookmark) {
 			// Remove the bookmark
-			bookmarkPlugin.instance.removeItem(file.path);
+			bookmarkPlugin.instance.removeItem(existingBookmark);
+			new Notice(`Removed bookmark: ${file.basename}`);
 		} else {
 			// Add the bookmark
 			bookmarkPlugin.instance.addItem({
 				type: 'file',
-				path: file.path
+				path: file.path,
+				title: file.basename
 			});
+			new Notice(`Added bookmark: ${file.basename}`);
 		}
 
 		// Re-render
