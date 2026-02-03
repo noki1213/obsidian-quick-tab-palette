@@ -53,11 +53,10 @@
 
 /* Column */
 .tab-palette-column {
-	flex: 0 0 320px; /* Fixed width (adjust as needed) */
-	min-width: 320px;
-	max-width: 90vw; /* Smaller than the screen width */
+	flex: 1 1 0; /* Split into thirds */
 	display: flex;
 	flex-direction: column;
+	min-width: 0; /* Prevent child overflow */
 	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
 }
