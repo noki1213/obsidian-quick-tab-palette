@@ -6,7 +6,8 @@ const DEFAULT_SETTINGS = {
 	showTags: true,
 	showPath: true,
 	sortOrder: 'recency', // 'recency' または 'opening-order'
-	alwaysOpenInNewTab: false
+	alwaysOpenInNewTab: false,
+	recentlyClosed: [] // 最近閉じたタブの履歴
 };
 
 // Tab palette modal
@@ -73,7 +74,7 @@ class TabPaletteModal extends Modal {
 		
 		// --- Center column: Open Tabs ---
 		const tabsColumn = columnsEl.createDiv('tab-palette-column');
-		tabsColumn.createEl('h3', { text: 'Open Tabs' });
+		tabsColumn.createEl('h3', { text: 'Tabs' });
 		const tabList = tabsColumn.createDiv('tab-palette-list');
 		
 		// --- Right column: Bookmarks ---
@@ -281,13 +282,22 @@ class TabPaletteModal extends Modal {
 	getTabs() {
 		const tabs = [];
 		const workspace = this.app.workspace;
+		const openPaths = new Set();
 
 		workspace.iterateAllLeaves((leaf) => {
 			const viewState = leaf.getViewState();
-			if (viewState.type === 'markdown' || viewState.type === 'canvas') {
-				const file = this.app.vault.getAbstractFileByPath(viewState.state.file);
+			if (['markdown', 'canvas', 'image', 'pdf'].includes(viewState.type)) {
+				// Check for this since the file property may be missing
+				let path = viewState.state.file;
+				// Prefer view.file when it's available (more reliable)
+				if (leaf.view && leaf.view.file) {
+					path = leaf.view.file.path;
+				}
+
+				const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
 
 				if (file) {
+					openPaths.add(file.path);
 					let isExcluded = false;
 					for (const folder of this.plugin.settings.excludedFolders) {
 						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
@@ -303,7 +313,8 @@ class TabPaletteModal extends Modal {
 							name: file.basename,
 							path: file.path,
 							isPinned: leaf.pinned,
-							isBookmarked: this.isFileBookmarked(file.path)
+							isBookmarked: this.isFileBookmarked(file.path),
+							isRecentlyClosed: false
 						});
 					}
 				}
@@ -313,6 +324,43 @@ class TabPaletteModal extends Modal {
 		if (this.plugin.settings.sortOrder === 'recency') {
 			tabs.sort((a, b) => (b.leaf.activeTime || 0) - (a.leaf.activeTime || 0));
 		}
+
+		// Add to recently closed tabs
+		const recentlyClosed = this.plugin.settings.recentlyClosed || [];
+		let firstClosed = true;
+
+		recentlyClosed.forEach(closedTab => {
+			// Exclude the currently open tab
+			if (openPaths.has(closedTab.path)) return;
+
+			// Check whether the file exists
+			const file = this.app.vault.getAbstractFileByPath(closedTab.path);
+			if (!file) return;
+
+			// Check excluded folders
+			let isExcluded = false;
+			for (const folder of this.plugin.settings.excludedFolders) {
+				if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
+					isExcluded = true;
+					break;
+				}
+			}
+
+			if (!isExcluded) {
+				tabs.push({
+					leaf: null, // 閉じたタブなのでleafなし
+					file: file,
+					name: file.basename,
+					path: file.path,
+					isPinned: false,
+					isBookmarked: this.isFileBookmarked(file.path),
+					isRecentlyClosed: true,
+					isHeader: firstClosed // 最初の項目にヘッダーフラグ
+				});
+				if (firstClosed) firstClosed = false;
+			}
+		});
+
 		return tabs;
 	}
 	
@@ -331,6 +379,11 @@ class TabPaletteModal extends Modal {
 		}
 
 		this.filteredTabs.forEach((tab, index) => {
+			if (tab.isHeader) {
+				container.createEl('hr', { cls: 'tab-palette-separator' });
+				container.createDiv({ text: 'Recently Closed', cls: 'tab-palette-section-header' });
+			}
+
 			const tabEl = container.createDiv('tab-palette-item');
 
 			if (this.activeSection === 'tabs' && index === this.selectedTabIndex) {
@@ -500,7 +553,13 @@ class TabPaletteModal extends Modal {
 
 		if (this.activeSection === 'tabs') {
 			const tab = this.filteredTabs[this.selectedTabIndex];
-			if (tab) leaf = tab.leaf;
+			if (tab) {
+				leaf = tab.leaf;
+				// For a closed tab there's no leaf, so set fileToOpen instead
+				if (!leaf && tab.file) {
+					fileToOpen = tab.file;
+				}
+			}
 		} else if (this.activeSection === 'bookmarks') {
 			const bookmark = this.filteredBookmarks[this.selectedBookmarkIndex];
 			if (bookmark) fileToOpen = bookmark.file;
@@ -695,6 +754,16 @@ class TabPaletteSettingTab extends PluginSettingTab {
 class TabPalettePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
+		
+		// Initialize state for closed-tab detection
+		this.lastOpenTabs = this.getOpenTabsInfo();
+		
+		// Watch for layout changes to detect closed tabs
+		this.registerEvent(
+			this.app.workspace.on('layout-change', () => {
+				this.detectClosedTabs();
+			})
+		);
 
 		// Command to open the tab palette
 		this.addCommand({
@@ -755,6 +824,58 @@ class TabPalettePlugin extends Plugin {
 		this.register(() => {
 			Workspace.prototype.getLeaf = originalGetLeaf;
 		});
+	}
+
+	// Get info about the currently open tabs
+	getOpenTabsInfo() {
+		const leaves = [];
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const viewState = leaf.getViewState();
+			// Target file types
+			if (['markdown', 'canvas', 'image', 'pdf'].includes(viewState.type)) {
+				const file = leaf.view.file;
+				if (file) {
+					leaves.push({
+						path: file.path,
+						title: leaf.getDisplayText(),
+						basename: file.basename,
+						extension: file.extension
+					});
+				}
+			}
+		});
+		return leaves;
+	}
+
+	// Detect closed tabs and save them to history
+	detectClosedTabs() {
+		const currentTabs = this.getOpenTabsInfo();
+		
+		// Find items that existed before but are gone now
+		const closedTabs = this.lastOpenTabs.filter(lastTab => 
+			!currentTabs.some(currTab => currTab.path === lastTab.path)
+		);
+
+		if (closedTabs.length > 0) {
+			let updatedHistory = [...(this.settings.recentlyClosed || [])];
+			
+			// Add the newly closed tab to the front
+			closedTabs.forEach(tab => {
+				// Remove duplicates from history and move the entry to the front
+				updatedHistory = updatedHistory.filter(h => h.path !== tab.path);
+				updatedHistory.unshift(tab);
+			});
+
+			// Cap at 5 items
+			if (updatedHistory.length > 5) {
+				updatedHistory = updatedHistory.slice(0, 5);
+			}
+
+			this.settings.recentlyClosed = updatedHistory;
+			this.saveSettings();
+		}
+
+		this.lastOpenTabs = currentTabs;
 	}
 
 	// Move to the previous tab
