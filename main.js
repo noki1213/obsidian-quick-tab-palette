@@ -173,6 +173,18 @@ class TabPaletteModal extends Modal {
 			return false;
 		});
 
+		// w key closes the tab
+		this.scope.register([], 'w', (e) => {
+			this.closeSelectedTab();
+			return false;
+		});
+
+		// p key toggles pin/unpin on a tab
+		this.scope.register([], 'p', (e) => {
+			this.pinSelectedTab();
+			return false;
+		});
+
 		// Initial focus and scroll position
 		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
 		this.selectedTabIndex = 0;
@@ -601,6 +613,29 @@ class TabPaletteModal extends Modal {
 		
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab) return;
+		
+		// Add to Recently Closed (unless the tab is already closed)
+		if (tab.leaf) {
+			const closedTabInfo = {
+				path: tab.path,
+				title: tab.name,
+				basename: tab.name,
+				extension: tab.file.extension
+			};
+			
+			let updatedHistory = [...(this.plugin.settings.recentlyClosed || [])];
+			// Remove duplicates from history and move the entry to the front
+			updatedHistory = updatedHistory.filter(h => h.path !== closedTabInfo.path);
+			updatedHistory.unshift(closedTabInfo);
+			
+			// Cap at 5 items
+			if (updatedHistory.length > 5) {
+				updatedHistory = updatedHistory.slice(0, 5);
+			}
+			
+			this.plugin.settings.recentlyClosed = updatedHistory;
+			this.plugin.saveSettings();
+		}
 		
 		tab.leaf.detach();
 		
