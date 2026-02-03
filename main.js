@@ -14,22 +14,25 @@ class TabPaletteModal extends Modal {
 	constructor(app, plugin) {
 		super(app);
 		this.plugin = plugin;
-		
+
 		// 状態管理
 		this.activeSection = 'tabs'; // 'search', 'tabs', 'bookmarks'
 		this.selectedTabIndex = 0;
 		this.selectedBookmarkIndex = 0;
 		this.selectedSearchIndex = 0;
-		
+
 		this.searchQuery = '';
 		this.vaultFiles = []; // 全ファイルキャッシュ
-		
+
 		this.filteredTabs = [];
 		this.filteredBookmarks = [];
 		this.searchResults = [];
-		
+
 		this.tabs = [];
 		this.bookmarks = [];
+
+		// IME入力中かどうかを追跡
+		this.isComposing = false;
 	}
 
 	async onOpen() {
@@ -91,9 +94,18 @@ class TabPaletteModal extends Modal {
 			this.renderAll();
 		});
 
+		// IME入力の開始と終了を追跡
+		this.searchInput.addEventListener('compositionstart', () => {
+			this.isComposing = true;
+		});
+
+		this.searchInput.addEventListener('compositionend', () => {
+			this.isComposing = false;
+		});
+
 		this.searchInput.addEventListener('keydown', (e) => {
-			// IME変換中のEnterは無視
-			if (e.isComposing) return;
+			// IME変換中のEnterは無視（isComposingフラグもチェック）
+			if (e.isComposing || this.isComposing) return;
 
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
@@ -144,35 +156,24 @@ class TabPaletteModal extends Modal {
 		});
 
 		this.scope.register([], 'Enter', (e) => {
+			// IME変換中は無視
+			if (e.isComposing || this.isComposing) return;
 			this.openSelectedTab();
 			return false;
 		});
-		
-		// 文字キー入力時、検索ボックスにフォーカスがない場合はフォーカスを戻す
-		modalEl.addEventListener('keydown', (e) => {
-			// IME入力開始時や文字入力時
-			if (document.activeElement !== this.searchInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-				// Arrowキーなどは除く
-				this.searchInput.focus();
-				// ここで activeSection を search に切り替えるかはお好みだが、
-				// ユーザー体験的には検索しようとしているので search に移動した方が自然かも？
-				this.activeSection = 'search';
-				this.renderAll();
-			}
-		});
 
-		        // 初期フォーカスとスクロール位置
-		        this.activeSection = 'tabs'; // 初期選択はOpen Tabs
-		        this.selectedTabIndex = 0;
-		        
-		        // 検索窓のフォーカスは外す
-		        this.searchInput.blur();
-		        // モーダル自体にフォーカスを当てておく（キーイベントを受け取るため）
-		        this.modalEl.focus(); 
-		        
-		        this.renderAll();		
-		// 真ん中のカラムが見えるようにスクロール調整
+		// 初期フォーカスとスクロール位置
+		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
+		this.selectedTabIndex = 0;
+
+		this.renderAll();
+
+		// 検索窓のフォーカスを外して、モーダルにフォーカスを当てる
+		// setTimeoutで遅延させて確実に動作させる
 		setTimeout(() => {
+			this.searchInput.blur();
+			this.modalEl.focus();
+			// 真ん中のカラムが見えるようにスクロール調整
 			tabsColumn.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
 		}, 10);
 	}
@@ -256,11 +257,17 @@ class TabPaletteModal extends Modal {
 		
 		// 空のセクションには移動しない（オプション）
 		// if (nextSection === 'search' && this.searchResults.length === 0) ...
-		
+
 		if (this.activeSection !== nextSection) {
 			this.activeSection = nextSection;
+
+			// searchセクションに移動した時は検索窓にフォーカス
+			if (nextSection === 'search') {
+				this.searchInput.focus();
+			}
+
 			this.renderAll();
-			
+
 			// カラムが見えるようにスクロール
 			const container = this.contentEl.querySelector('.tab-palette-columns');
 			const targetColumn = container.children[currentIndex];
