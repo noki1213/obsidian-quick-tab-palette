@@ -98,7 +98,7 @@ class TabPaletteModal extends Modal {
 
 		// Add the keybinding help at the very bottom
 		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
-		helpFooter.createSpan().setText('w: Close  |  p: Toggle Pin  |  b: Toggle Bookmark');
+		helpFooter.createSpan().setText('w: close  |  p: toggle pin  |  b: toggle bookmark');
 
 		// Initial render
 		this.renderAll();
