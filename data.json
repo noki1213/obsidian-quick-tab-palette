@@ -8,6 +8,12 @@
   "alwaysOpenInNewTab": true,
   "recentlyClosed": [
     {
+      "path": "33_Tech-and-Tools/Githubで人生を管理する.md",
+      "title": "Githubで人生を管理する",
+      "basename": "Githubで人生を管理する",
+      "extension": "md"
+    },
+    {
       "path": "10_英語/TheRules1_1.md",
       "title": "TheRules1_1",
       "basename": "TheRules1_1",
@@ -29,12 +35,6 @@
       "path": "00_DailyNote/DailyNote一覧.md",
       "title": "DailyNote一覧",
       "basename": "DailyNote一覧",
-      "extension": "md"
-    },
-    {
-      "path": "Inbox/英語本棚.md",
-      "title": "英語本棚",
-      "basename": "英語本棚",
       "extension": "md"
     }
   ],
