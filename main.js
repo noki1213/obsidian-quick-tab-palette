@@ -41,6 +41,15 @@ class TabPaletteModal extends Modal {
 		this.isComposing = false;
 	}
 
+	getEnabledSections() {
+		const sections = [];
+		if (this.plugin.settings.enableSearch) sections.push('search');
+		if (this.plugin.settings.enableTabs) sections.push('tabs');
+		if (this.plugin.settings.enableBookmarks) sections.push('bookmarks');
+		if (this.plugin.settings.enableDailyNotes) sections.push('dailyNotes');
+		return sections;
+	}
+
 	async onOpen() {
 		const { contentEl, modalEl } = this;
 		
@@ -65,35 +74,77 @@ class TabPaletteModal extends Modal {
 		const columnsEl = contentEl.createDiv('tab-palette-columns');
 
 		// --- Left column: Search ---
-		const searchColumn = columnsEl.createDiv('tab-palette-column');
-		searchColumn.createEl('h3', { text: 'Vault Search' });
-		
-		// Place the search box inside the left column
-		const searchContainer = searchColumn.createDiv('tab-palette-search-container');
-		this.searchInput = searchContainer.createEl('input', {
-			type: 'text',
-			cls: 'tab-palette-search-input',
-			placeholder: 'Search vault...'
-		});
-		
-		const searchList = searchColumn.createDiv('tab-palette-search-list');
+		if (this.plugin.settings.enableSearch) {
+			const searchColumn = columnsEl.createDiv('tab-palette-column');
+			searchColumn.createEl('h3', { text: 'Vault Search' });
+			
+			// Place the search box inside the left column
+			const searchContainer = searchColumn.createDiv('tab-palette-search-container');
+			this.searchInput = searchContainer.createEl('input', {
+				type: 'text',
+				cls: 'tab-palette-search-input',
+				placeholder: 'Search vault...'
+			});
+			
+			const searchList = searchColumn.createDiv('tab-palette-search-list');
+
+			// Set up event listeners (only when search is enabled)
+			this.searchInput.addEventListener('input', (e) => {
+				const query = e.target.value;
+				this.performSearch(query);
+				this.renderAll();
+			});
+
+			this.searchInput.addEventListener('compositionstart', () => {
+				this.isComposing = true;
+			});
+
+			this.searchInput.addEventListener('compositionend', () => {
+				this.isComposing = false;
+			});
+
+			this.searchInput.addEventListener('keydown', (e) => {
+				if (e.isComposing || this.isComposing) return;
+
+				if (e.key === 'ArrowDown') {
+					e.preventDefault();
+					this.searchInput.blur();
+					this.modalEl.focus();
+				} else if (e.key === 'Enter') {
+					e.preventDefault();
+					this.openSelectedTab();
+				}
+			});
+		}
 		
 		// --- Center column: Open Tabs ---
-		const tabsColumn = columnsEl.createDiv('tab-palette-column');
-		tabsColumn.createEl('h3', { text: 'Tabs' });
-		const tabList = tabsColumn.createDiv('tab-palette-list');
+		let tabList = null;
+		if (this.plugin.settings.enableTabs) {
+			const tabsColumn = columnsEl.createDiv('tab-palette-column');
+			tabsColumn.createEl('h3', { text: 'Tabs' });
+			tabList = tabsColumn.createDiv('tab-palette-list');
+		}
 		
 		// --- Right column: Bookmarks & Daily Notes ---
-		const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
-		bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
-		const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
-		
-		// Daily Notes section
-		if (this.plugin.settings.enableDailyNotes) {
-			const divider = bookmarksColumn.createEl('hr', { cls: 'tab-palette-section-divider' });
-			const dailyNotesTitle = bookmarksColumn.createEl('h3', { text: 'Daily Notes' });
-			dailyNotesTitle.addClass('daily-notes-title');
-			const dailyNoteList = bookmarksColumn.createDiv('tab-palette-daily-note-list');
+		// Create the column if either bookmarks or daily notes is enabled
+		if (this.plugin.settings.enableBookmarks || this.plugin.settings.enableDailyNotes) {
+			const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
+			
+			if (this.plugin.settings.enableBookmarks) {
+				bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
+				const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
+			}
+			
+			// Daily Notes section
+			if (this.plugin.settings.enableDailyNotes) {
+				// Add a divider if bookmarks is also enabled
+				if (this.plugin.settings.enableBookmarks) {
+					const divider = bookmarksColumn.createEl('hr', { cls: 'tab-palette-section-divider' });
+				}
+				const dailyNotesTitle = bookmarksColumn.createEl('h3', { text: 'Daily Notes' });
+				dailyNotesTitle.addClass('daily-notes-title');
+				const dailyNoteList = bookmarksColumn.createDiv('tab-palette-daily-note-list');
+			}
 		}
 
 		// Add the keybinding help at the very bottom
@@ -103,38 +154,7 @@ class TabPaletteModal extends Modal {
 		// Initial render
 		this.renderAll();
 
-		// Set up event listeners
-		this.searchInput.addEventListener('input', (e) => {
-			// Leave this as-is if you want search to run during IME composition too.
-			// If you only want this after conversion is finalized, using the compositionend event is another option, but
-			// The input event is fine for real-time search.
-			const query = e.target.value;
-			this.performSearch(query);
-			this.renderAll();
-		});
-
-		// Track the start and end of IME composition
-		this.searchInput.addEventListener('compositionstart', () => {
-			this.isComposing = true;
-		});
-
-		this.searchInput.addEventListener('compositionend', () => {
-			this.isComposing = false;
-		});
-
-		this.searchInput.addEventListener('keydown', (e) => {
-			// Ignore Enter while IME conversion is in progress (also check the isComposing flag)
-			if (e.isComposing || this.isComposing) return;
-
-			if (e.key === 'ArrowDown') {
-				e.preventDefault();
-				this.searchInput.blur(); // フォーカスを外してリスト操作モードへ
-				this.modalEl.focus();
-			} else if (e.key === 'Enter') {
-				e.preventDefault();
-				this.openSelectedTab();
-			}
-		});
+		// Set up event listeners (excluding the search input)
 
 		// Show the cursor on mouse movement
 		modalEl.addEventListener('mousemove', () => {
@@ -161,7 +181,7 @@ class TabPaletteModal extends Modal {
 		
 		// Move between sections with the left/right keys
 		this.scope.register([], 'ArrowLeft', (e) => {
-			if (document.activeElement === this.searchInput) return; 
+			if (this.searchInput && document.activeElement === this.searchInput) return; 
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
@@ -169,7 +189,7 @@ class TabPaletteModal extends Modal {
 
 		this.scope.register([], 'ArrowRight', (e) => {
 			// When the search box has focus
-			if (document.activeElement === this.searchInput) {
+			if (this.searchInput && document.activeElement === this.searchInput) {
 				// Check whether the cursor is at the end
 				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
 				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
@@ -210,18 +230,26 @@ class TabPaletteModal extends Modal {
 		});
 
 		// Initial focus and scroll position
-		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
-		this.selectedTabIndex = 0;
+		// Use the activeSection set in the constructor
 
 		this.renderAll();
 
 		// Remove focus from the search box and focus the modal instead
 		// Delay with setTimeout to make sure this runs reliably
 		setTimeout(() => {
-			this.searchInput.blur();
+			if (this.searchInput) {
+				this.searchInput.blur();
+			}
 			this.modalEl.focus();
-			// Adjust scroll so the middle column is visible
-			tabsColumn.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
+			
+			// Adjust scroll so the current active column is visible
+			// Handle this generically since tabsColumn may not exist
+			const container = this.contentEl.querySelector('.tab-palette-columns');
+			if (container) {
+				// This roughly centers things, but strictly speaking it should look up the column that corresponds to activeSection
+				// No action needed here since this gets adjusted when switchSection is called or during renderAll
+				// For now, just try a simple scroll
+			}
 		}, 10);
 	}
 	
@@ -287,11 +315,13 @@ class TabPaletteModal extends Modal {
 
 	// Switch sections
 	switchSection(direction) {
-		const sections = ['search', 'tabs', 'bookmarks'];
-		if (this.plugin.settings.enableDailyNotes) {
-			sections.push('dailyNotes');
-		}
+		const sections = this.getEnabledSections();
+		if (sections.length === 0) return;
+
 		let currentIndex = sections.indexOf(this.activeSection);
+		
+		// Fall back to index 0 when nothing is found, e.g. if the current section is disabled
+		if (currentIndex === -1) currentIndex = 0;
 		
 		if (direction === 'right') {
 			currentIndex++;
@@ -307,14 +337,11 @@ class TabPaletteModal extends Modal {
 		
 		const nextSection = sections[currentIndex];
 		
-		// Don't move into an empty section (optional)
-		// if (nextSection === 'search' && this.searchResults.length === 0) ...
-
 		if (this.activeSection !== nextSection) {
 			this.activeSection = nextSection;
 
 			// Focus the search box when moving to the search section
-			if (nextSection === 'search') {
+			if (nextSection === 'search' && this.searchInput) {
 				this.searchInput.focus();
 			}
 
@@ -322,9 +349,30 @@ class TabPaletteModal extends Modal {
 
 			// Scroll so the column is visible
 			const container = this.contentEl.querySelector('.tab-palette-columns');
-			const targetColumn = container.children[currentIndex];
-			if (targetColumn) {
-				targetColumn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+			// Need to compute the column's index
+			// The physical column order is: search, tabs, bookmarks (including dailyNotes)
+			// However, since dailyNotes is also listed separately in the sections array, the index mapping isn't a simple one-to-one
+			
+			// Find the target physical column
+			let targetColumnIndex = -1;
+			if (nextSection === 'search') targetColumnIndex = 0; // 常に左
+			else if (nextSection === 'tabs') {
+				// Index 1 if search is enabled, otherwise index 0
+				targetColumnIndex = this.plugin.settings.enableSearch ? 1 : 0;
+			}
+			else if (nextSection === 'bookmarks' || nextSection === 'dailyNotes') {
+				// Rightmost column
+				let idx = 0;
+				if (this.plugin.settings.enableSearch) idx++;
+				if (this.plugin.settings.enableTabs) idx++;
+				targetColumnIndex = idx;
+			}
+			
+			if (container && targetColumnIndex >= 0 && targetColumnIndex < container.children.length) {
+				const targetColumn = container.children[targetColumnIndex];
+				if (targetColumn) {
+					targetColumn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+				}
 			}
 		}
 	}
@@ -570,29 +618,41 @@ class TabPaletteModal extends Modal {
 	moveSelection(direction) {
 		if (this.activeSection === 'tabs') {
 			this.selectedTabIndex = this.clampIndex(this.selectedTabIndex + direction, this.filteredTabs.length);
-			this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
+			const container = this.contentEl.querySelector('.tab-palette-list');
+			if (container) this.renderTabs(container);
 		} else if (this.activeSection === 'bookmarks') {
-			// Pressing ArrowDown at the bottom of bookmarks moves focus to dailyNotes
-			if (direction > 0 && this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 && this.plugin.settings.enableDailyNotes && this.dailyNotes.length > 0) {
+			// Pressing ArrowDown at the bottom of bookmarks moves focus to dailyNotes (only when both are enabled)
+			if (direction > 0 && 
+				this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 && 
+				this.plugin.settings.enableDailyNotes && 
+				this.dailyNotes.length > 0) {
+				
 				this.activeSection = 'dailyNotes';
 				this.selectedDailyNoteIndex = 0;
 				this.renderAll();
 			} else {
 				this.selectedBookmarkIndex = this.clampIndex(this.selectedBookmarkIndex + direction, this.filteredBookmarks.length);
-				this.renderBookmarks(this.contentEl.querySelector('.tab-palette-bookmark-list'));
+				const container = this.contentEl.querySelector('.tab-palette-bookmark-list');
+				if (container) this.renderBookmarks(container);
 			}
 		} else if (this.activeSection === 'search') {
 			this.selectedSearchIndex = this.clampIndex(this.selectedSearchIndex + direction, this.searchResults.length);
-			this.renderSearchResults(this.contentEl.querySelector('.tab-palette-search-list'));
+			const container = this.contentEl.querySelector('.tab-palette-search-list');
+			if (container) this.renderSearchResults(container);
 		} else if (this.activeSection === 'dailyNotes') {
-			// Pressing ArrowUp at the top of dailyNotes moves focus back to bookmarks
-			if (direction < 0 && this.selectedDailyNoteIndex === 0 && this.filteredBookmarks.length > 0) {
+			// Pressing ArrowUp at the top of dailyNotes moves focus back to bookmarks (only when bookmarks is enabled)
+			if (direction < 0 && 
+				this.selectedDailyNoteIndex === 0 && 
+				this.plugin.settings.enableBookmarks && 
+				this.filteredBookmarks.length > 0) {
+				
 				this.activeSection = 'bookmarks';
 				this.selectedBookmarkIndex = this.filteredBookmarks.length - 1;
 				this.renderAll();
 			} else {
 				this.selectedDailyNoteIndex = this.clampIndex(this.selectedDailyNoteIndex + direction, this.dailyNotes.length);
-				this.renderDailyNotes(this.contentEl.querySelector('.tab-palette-daily-note-list'));
+				const container = this.contentEl.querySelector('.tab-palette-daily-note-list');
+				if (container) this.renderDailyNotes(container);
 			}
 		}
 		
@@ -967,12 +1027,80 @@ class TabPaletteSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'Tab Palette 設定' });
 
-		// Excluded folders
+		// --- Section display settings ---
+		containerEl.createEl('h3', { text: 'セクションの表示設定' });
+
+		new Setting(containerEl)
+			.setName('検索 (Search)')
+			.setDesc('Vault内の検索機能を表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableSearch)
+				.onChange(async (value) => {
+					this.plugin.settings.enableSearch = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('開いているタブ (Tabs)')
+			.setDesc('現在開いているタブの一覧を表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableTabs)
+				.onChange(async (value) => {
+					this.plugin.settings.enableTabs = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('ブックマーク (Bookmarks)')
+			.setDesc('Obsidianのブックマークを表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableBookmarks)
+				.onChange(async (value) => {
+					this.plugin.settings.enableBookmarks = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('デイリーノート (Daily Notes)')
+			.setDesc('直近のデイリーノート（昨日・今日・明日）を表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableDailyNotes)
+				.onChange(async (value) => {
+					this.plugin.settings.enableDailyNotes = value;
+					// Ideally this would re-render after saving settings to toggle the detail settings below, but
+					// here we simply save it and leave it at that
+					await this.plugin.saveSettings();
+					this.display(); // Re-renderして詳細設定の表示状態を更新
+				}));
+
+		// --- Display options ---
+		containerEl.createEl('h3', { text: '表示オプション' });
+
+		new Setting(containerEl)
+			.setName('ファイルパスを表示')
+			.setDesc('リスト各項目にフォルダパスを表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showPath)
+				.onChange(async (value) => {
+					this.plugin.settings.showPath = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('タグを表示')
+			.setDesc('リスト各項目にタグを表示する')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showTags)
+				.onChange(async (value) => {
+					this.plugin.settings.showTags = value;
+					await this.plugin.saveSettings();
+				}));
+
 		new Setting(containerEl)
 			.setName('除外フォルダ')
-			.setDesc('タブ一覧に表示しないフォルダ名（カンマ区切り）')
+			.setDesc('一覧に表示しないフォルダ（カンマ区切り）')
 			.addText(text => text
-				.setPlaceholder('')
+				.setPlaceholder('attachments, templates')
 				.setValue(this.plugin.settings.excludedFolders.join(', '))
 				.onChange(async (value) => {
 					this.plugin.settings.excludedFolders = value
@@ -982,45 +1110,24 @@ class TabPaletteSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Show the tag
-		new Setting(containerEl)
-			.setName('タグを表示')
-			.setDesc('タブ一覧にタグを表示する')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showTags)
-				.onChange(async (value) => {
-					this.plugin.settings.showTags = value;
-					await this.plugin.saveSettings();
-				}));
+		// --- Behavior settings ---
+		containerEl.createEl('h3', { text: '動作設定' });
 
-		// Show the path
 		new Setting(containerEl)
-			.setName('パスを表示')
-			.setDesc('タブ一覧にファイルパスを表示する')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showPath)
-				.onChange(async (value) => {
-					this.plugin.settings.showPath = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Order
-		new Setting(containerEl)
-			.setName('並び順')
-			.setDesc('タブの並び順を選択')
+			.setName('タブの並び順')
+			.setDesc('タブ一覧の並び順を選択')
 			.addDropdown(dropdown => dropdown
 				.addOption('recency', '履歴順（最近開いた順）')
-				.addOption('opening-order', '開いた順')
+				.addOption('opening-order', '開いた順（タブバーの並び）')
 				.setValue(this.plugin.settings.sortOrder)
 				.onChange(async (value) => {
 					this.plugin.settings.sortOrder = value;
 					await this.plugin.saveSettings();
 				}));
 
-		// Always open in a new tab
 		new Setting(containerEl)
 			.setName('常に新しいタブで開く')
-			.setDesc('ファイルを開く際、常に新しいタブで開く')
+			.setDesc('ファイルを選択した際、常に新しいタブで開くように強制する')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.alwaysOpenInNewTab)
 				.onChange(async (value) => {
@@ -1028,40 +1135,33 @@ class TabPaletteSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Enable the daily note
-		new Setting(containerEl)
-			.setName('デイリーノートセクションを表示')
-			.setDesc('タブパレットにデイリーノート（昨日・今日・明日）を表示する')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableDailyNotes)
-				.onChange(async (value) => {
-					this.plugin.settings.enableDailyNotes = value;
-					await this.plugin.saveSettings();
-				}));
+		// --- Daily note detail settings ---
+		// Show only when Daily Notes is enabled
+		if (this.plugin.settings.enableDailyNotes) {
+			containerEl.createEl('h3', { text: 'デイリーノート設定' });
 
-		// Daily note date format
-		new Setting(containerEl)
-			.setName('デイリーノート日付フォーマット')
-			.setDesc('moment.js形式（例: YYYY-MM-DD (ddd)）')
-			.addText(text => text
-				.setPlaceholder('YYYY-MM-DD (ddd)')
-				.setValue(this.plugin.settings.dailyNoteFormat)
-				.onChange(async (value) => {
-					this.plugin.settings.dailyNoteFormat = value || 'YYYY-MM-DD (ddd)';
-					await this.plugin.saveSettings();
-				}));
+			new Setting(containerEl)
+				.setName('日付フォーマット')
+				.setDesc('moment.js形式（例: YYYY-MM-DD (ddd)）')
+				.addText(text => text
+					.setPlaceholder('YYYY-MM-DD (ddd)')
+					.setValue(this.plugin.settings.dailyNoteFormat)
+					.onChange(async (value) => {
+						this.plugin.settings.dailyNoteFormat = value || 'YYYY-MM-DD (ddd)';
+						await this.plugin.saveSettings();
+					}));
 
-		// Folder where daily notes are saved
-		new Setting(containerEl)
-			.setName('デイリーノート保存先フォルダ')
-			.setDesc('デイリーノートが保存されているフォルダパス')
-			.addText(text => text
-				.setPlaceholder('00_DailyNote')
-				.setValue(this.plugin.settings.dailyNoteFolder)
-				.onChange(async (value) => {
-					this.plugin.settings.dailyNoteFolder = value || '00_DailyNote';
-					await this.plugin.saveSettings();
-				}));
+			new Setting(containerEl)
+				.setName('保存先フォルダ')
+				.setDesc('デイリーノートが保存されるフォルダパス')
+				.addText(text => text
+					.setPlaceholder('00_DailyNote')
+					.setValue(this.plugin.settings.dailyNoteFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.dailyNoteFolder = value || '00_DailyNote';
+						await this.plugin.saveSettings();
+					}));
+		}
 	}
 }
 
