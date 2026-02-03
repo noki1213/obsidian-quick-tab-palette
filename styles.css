@@ -283,6 +283,7 @@
 .tab-palette-bookmark-item.daily-note-not-exists .tab-palette-name-text {
     color: var(--text-muted);
 }
+
 /* キーバインドヘルプフッター */
 .tab-palette-help-footer {
     padding: 8px 10px;
@@ -292,5 +293,5 @@
     border-top: 1px solid var(--background-modifier-border);
     background-color: var(--background-secondary);
     flex-shrink: 0;
-    margin-top: auto;
+    margin-top: 12px;
 }

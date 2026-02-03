@@ -98,7 +98,7 @@ class TabPaletteModal extends Modal {
 
 		// キーバインドヘルプを一番下に追加
 		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
-		helpFooter.createSpan().setText('w: Close  |  p: Toggle Pin  |  b: Toggle Bookmark');
+		helpFooter.createSpan().setText('w: close  |  p: toggle pin  |  b: toggle bookmark');
 
 		// 初回描画
 		this.renderAll();
