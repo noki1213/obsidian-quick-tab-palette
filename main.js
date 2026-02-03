@@ -58,7 +58,7 @@ class TabPaletteModal extends Modal {
 		this.renderAll();
 
 		// Control whether the mouse cursor is shown or hidden
-		const modalEl = this.modalEl;
+		// const modalEl = this.modalEl; // removed
 
 		// Show the cursor on mouse movement
 		modalEl.addEventListener('mousemove', () => {
