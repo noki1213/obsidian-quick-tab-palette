@@ -173,6 +173,18 @@ class TabPaletteModal extends Modal {
 			return false;
 		});
 
+		// w キーでタブを閉じる
+		this.scope.register([], 'w', (e) => {
+			this.closeSelectedTab();
+			return false;
+		});
+
+		// p キーでタブをピン/アンピン
+		this.scope.register([], 'p', (e) => {
+			this.pinSelectedTab();
+			return false;
+		});
+
 		// 初期フォーカスとスクロール位置
 		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
 		this.selectedTabIndex = 0;
@@ -601,6 +613,29 @@ class TabPaletteModal extends Modal {
 		
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab) return;
+		
+		// Recently Closed に追加（既に閉じられているタブでなければ）
+		if (tab.leaf) {
+			const closedTabInfo = {
+				path: tab.path,
+				title: tab.name,
+				basename: tab.name,
+				extension: tab.file.extension
+			};
+			
+			let updatedHistory = [...(this.plugin.settings.recentlyClosed || [])];
+			// 履歴内の重複を削除して先頭に持ってくる
+			updatedHistory = updatedHistory.filter(h => h.path !== closedTabInfo.path);
+			updatedHistory.unshift(closedTabInfo);
+			
+			// 最大5件に制限
+			if (updatedHistory.length > 5) {
+				updatedHistory = updatedHistory.slice(0, 5);
+			}
+			
+			this.plugin.settings.recentlyClosed = updatedHistory;
+			this.plugin.saveSettings();
+		}
 		
 		tab.leaf.detach();
 		
