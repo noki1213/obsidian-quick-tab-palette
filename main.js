@@ -8,6 +8,9 @@ const DEFAULT_SETTINGS = {
 	sortOrder: 'recency', // 'recency' or 'opening-order'
 	alwaysOpenInNewTab: false,
 	recentlyClosed: [], // History of recently closed tabs.
+	enableSearch: true,
+	enableTabs: true,
+	enableBookmarks: true,
 	enableDailyNotes: true,
 	dailyNoteFormat: '',
 	dailyNoteFolder: ''
