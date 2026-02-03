@@ -1,7 +1,7 @@
 {
 	"id": "quick-tab-palette",
 	"name": "Quick Tab Palette",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"minAppVersion": "1.0.0",
 	"description": "Advanced tab management with palette view, exclusion filters, and always open in new tab option",
 	"author": "noki",

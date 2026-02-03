@@ -8,6 +8,9 @@ const DEFAULT_SETTINGS = {
 	sortOrder: 'recency', // 'recency' または 'opening-order'
 	alwaysOpenInNewTab: false,
 	recentlyClosed: [], // 最近閉じたタブの履歴
+	enableSearch: true,
+	enableTabs: true,
+	enableBookmarks: true,
 	enableDailyNotes: true,
 	dailyNoteFormat: '',
 	dailyNoteFolder: ''
