@@ -25,7 +25,11 @@ class TabPaletteModal extends Modal {
 	}
 
 	onOpen() {
-		const { contentEl } = this;
+		const { contentEl, modalEl } = this;
+		
+		// Add the class that controls the overall modal size
+		modalEl.addClass('mod-tab-palette');
+		
 		contentEl.addClass('tab-palette-modal');
 
 		// Fetch data
