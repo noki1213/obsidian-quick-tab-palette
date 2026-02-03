@@ -25,7 +25,11 @@ class TabPaletteModal extends Modal {
 	}
 
 	onOpen() {
-		const { contentEl } = this;
+		const { contentEl, modalEl } = this;
+		
+		// モーダル全体のサイズ制御用クラスを追加
+		modalEl.addClass('mod-tab-palette');
+		
 		contentEl.addClass('tab-palette-modal');
 
 		// データ取得
