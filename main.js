@@ -199,6 +199,12 @@ class TabPaletteModal extends Modal {
 			return false;
 		});
 
+		// b キーでブックマーク/アンブックマーク
+		this.scope.register([], 'b', (e) => {
+			this.toggleBookmark();
+			return false;
+		});
+
 		// 初期フォーカスとスクロール位置
 		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
 		this.selectedTabIndex = 0;
@@ -702,6 +708,54 @@ class TabPaletteModal extends Modal {
 		tab.isPinned = !tab.isPinned; // ローカル更新
 
 		this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
+	}
+
+	// ブックマーク追加・削除
+	async toggleBookmark() {
+		const bookmarkPlugin = this.app.internalPlugins?.plugins?.bookmarks;
+
+		if (!bookmarkPlugin || !bookmarkPlugin.enabled) {
+			return;
+		}
+
+		let file = null;
+
+		if (this.activeSection === 'tabs') {
+			const tab = this.filteredTabs[this.selectedTabIndex];
+			if (tab) file = tab.file;
+		} else if (this.activeSection === 'bookmarks') {
+			const bookmark = this.filteredBookmarks[this.selectedBookmarkIndex];
+			if (bookmark) file = bookmark.file;
+		} else if (this.activeSection === 'search') {
+			const result = this.searchResults[this.selectedSearchIndex];
+			if (result) file = result;
+		} else if (this.activeSection === 'dailyNotes') {
+			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
+			if (dailyNote && dailyNote.exists) file = dailyNote.file;
+		}
+
+		if (!file) return;
+
+		const bookmarkItems = bookmarkPlugin.instance?.items || [];
+		const isBookmarked = bookmarkItems.some(item => item.type === 'file' && item.path === file.path);
+
+		if (isBookmarked) {
+			// ブックマーク削除
+			bookmarkPlugin.instance.removeItem(file.path);
+		} else {
+			// ブックマーク追加
+			bookmarkPlugin.instance.addItem({
+				type: 'file',
+				path: file.path
+			});
+		}
+
+		// 再描画
+		this.bookmarks = this.getBookmarksList();
+		this.tabs = this.getTabs();
+		this.dailyNotes = this.getDailyNotes();
+		this.performSearch(this.searchQuery);
+		this.renderAll();
 	}
 
 	// ファイルがブックマークされているかチェック
