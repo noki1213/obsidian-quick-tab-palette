@@ -1,15 +1,41 @@
 /* Tab palette modal */
 .tab-palette-modal {
 	padding: 20px;
-	max-width: 800px;
-	width: 100%;
-	max-height: 90vh;
-	overflow-y: auto;
+	max-width: 90vw; /* 横幅を広げる */
+	width: 1000px;
+	height: 80vh; /* 高さ固定 */
+	max-height: 80vh;
+	display: flex;
+	flex-direction: column;
 }
 
 .tab-palette-modal h3 {
 	margin-top: 0;
 	margin-bottom: 8px;
+	flex-shrink: 0;
+}
+
+/* Container for the 2-column layout */
+.tab-palette-columns {
+	display: flex;
+	gap: 20px;
+	flex: 1;
+	min-height: 0; /* flexアイテム内でのスクロールに必要 */
+}
+
+/* Column */
+.tab-palette-column {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0; /* 子要素のオーバーフロー防止 */
+	border-right: 1px solid var(--background-modifier-border);
+	padding-right: 10px;
+}
+
+.tab-palette-column:last-child {
+	border-right: none;
+	padding-right: 0;
 }
 
 /* Hide the cursor while navigating with the keyboard */
@@ -30,9 +56,13 @@
 	background-color: transparent;
 }
 
-/* Tab list */
-.tab-palette-list {
+/* Tab list and bookmark list */
+.tab-palette-list,
+.tab-palette-bookmark-list {
 	margin-top: 0;
+	overflow-y: auto; /* スクロール可能に */
+	flex: 1;
+	padding-bottom: 10px;
 }
 
 /* Tab item */
@@ -129,11 +159,9 @@
 	white-space: nowrap;
 }
 
-/* Divider */
+/* Divider - not needed in the 2-column layout */
 .tab-palette-separator {
-	margin: 16px 0;
-	border: none;
-	border-top: 1px solid var(--background-modifier-border);
+	display: none;
 }
 
 /* Bookmark list */
