@@ -1100,7 +1100,7 @@ class TabPaletteSettingTab extends PluginSettingTab {
 			.setName('除外フォルダ')
 			.setDesc('一覧に表示しないフォルダ（カンマ区切り）')
 			.addText(text => text
-				.setPlaceholder('attachments, templates')
+				.setPlaceholder('')
 				.setValue(this.plugin.settings.excludedFolders.join(', '))
 				.onChange(async (value) => {
 					this.plugin.settings.excludedFolders = value
