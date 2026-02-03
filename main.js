@@ -150,7 +150,17 @@ class TabPaletteModal extends Modal {
 		});
 
 		this.scope.register([], 'ArrowRight', (e) => {
-			if (document.activeElement === this.searchInput) return;
+			// 検索窓にフォーカスがある場合
+			if (document.activeElement === this.searchInput) {
+				// カーソルが末尾にあるかチェック
+				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
+				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
+				
+				// 末尾なら次のセクションへ移動するためにフォーカスを外す
+				this.searchInput.blur();
+				this.modalEl.focus();
+			}
+			
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;

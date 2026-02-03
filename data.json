@@ -5,5 +5,13 @@
   "showTags": true,
   "showPath": true,
   "sortOrder": "recency",
-  "alwaysOpenInNewTab": true
+  "alwaysOpenInNewTab": true,
+  "recentlyClosed": [
+    {
+      "path": "33_Tech-and-Tools/ガジェット・ツール_Index.md",
+      "title": "ガジェット・ツール_Index",
+      "basename": "ガジェット・ツール_Index",
+      "extension": "md"
+    }
+  ]
 }
