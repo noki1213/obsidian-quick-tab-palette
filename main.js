@@ -150,7 +150,17 @@ class TabPaletteModal extends Modal {
 		});
 
 		this.scope.register([], 'ArrowRight', (e) => {
-			if (document.activeElement === this.searchInput) return;
+			// When the search box has focus
+			if (document.activeElement === this.searchInput) {
+				// Check whether the cursor is at the end
+				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
+				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
+				
+				// Blur focus to move to the next section if we're at the end
+				this.searchInput.blur();
+				this.modalEl.focus();
+			}
+			
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
