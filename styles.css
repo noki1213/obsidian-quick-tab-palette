@@ -8,7 +8,7 @@
 
 /* Tab palette modal (content area) */
 .tab-palette-modal {
-	padding: 10px; /* Slightly reduce padding */
+	padding: 10px;
 	height: 100%;
 	display: flex;
 	flex-direction: column;
@@ -20,34 +20,57 @@
 	flex-shrink: 0;
 }
 
-/* Container for the 2-column layout */
+/* Search box */
+.tab-palette-search-container {
+	margin-bottom: 15px;
+	flex-shrink: 0;
+}
+
+.tab-palette-search-input {
+	width: 100%;
+	font-size: 1.2em;
+	padding: 10px;
+	border-radius: 5px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-modifier-form-field);
+}
+
+.tab-palette-search-input:focus {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* Container for the 3-column layout */
 .tab-palette-columns {
 	display: flex;
-	gap: 0; /* Remove gap; control spacing with padding */
+	gap: 0;
 	flex: 1;
-	min-height: 0; /* Needed for scrolling inside a flex item */
+	min-height: 0;
+	overflow-x: auto; /* Enable horizontal scrolling */
+	overflow-y: hidden;
+	scroll-behavior: smooth;
 }
 
 /* Column */
 .tab-palette-column {
-	flex: 0 0 50%; /* Force 50% width */
-	max-width: 50%;
+	flex: 0 0 320px; /* Fixed width (adjust as needed) */
+	min-width: 320px;
+	max-width: 90vw; /* Smaller than the screen width */
 	display: flex;
 	flex-direction: column;
-	min-width: 0; /* Prevent child overflow */
-	padding: 0 10px; /* Padding on left and right */
-}
-
-/* Left column (with border) */
-.tab-palette-column:first-child {
+	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
-	padding-left: 0; /* Tighten the left edge (adjust as needed) */
 }
 
-/* Right column */
+/* No border on the last column */
 .tab-palette-column:last-child {
 	border-right: none;
-	padding-right: 0; /* Tighten the right edge (adjust as needed) */
+	padding-right: 0;
+}
+
+/* First column */
+.tab-palette-column:first-child {
+	padding-left: 0;
 }
 
 /* Hide the cursor while navigating with the keyboard */
@@ -60,25 +83,26 @@
 }
 
 /* Disable hover effects while navigating with the keyboard */
-.modal.is-keyboard-mode .tab-palette-item:hover {
+.modal.is-keyboard-mode .tab-palette-item:hover,
+.modal.is-keyboard-mode .tab-palette-bookmark-item:hover,
+.modal.is-keyboard-mode .tab-palette-search-item:hover {
 	background-color: transparent;
 }
 
-.modal.is-keyboard-mode .tab-palette-bookmark-item:hover {
-	background-color: transparent;
-}
-
-/* Tab list and bookmark list */
+/* Tab list, bookmark list, and search results list */
 .tab-palette-list,
-.tab-palette-bookmark-list {
+.tab-palette-bookmark-list,
+.tab-palette-search-list {
 	margin-top: 0;
 	overflow-y: auto; /* Make it scrollable */
 	flex: 1;
 	padding-bottom: 10px;
 }
 
-/* Tab item */
-.tab-palette-item {
+/* Tab item, bookmark item, and search item */
+.tab-palette-item,
+.tab-palette-bookmark-item,
+.tab-palette-search-item {
 	padding: 10px;
 	margin-bottom: 5px;
 	border: 1px solid var(--background-modifier-border);
@@ -87,11 +111,15 @@
 	transition: background-color 0.2s;
 }
 
-.tab-palette-item:hover {
+.tab-palette-item:hover,
+.tab-palette-bookmark-item:hover,
+.tab-palette-search-item:hover {
 	background-color: var(--background-modifier-hover);
 }
 
-.tab-palette-item.is-selected {
+.tab-palette-item.is-selected,
+.tab-palette-bookmark-item.is-selected,
+.tab-palette-search-item.is-selected {
 	background-color: var(--background-modifier-active-hover);
 	border-color: var(--interactive-accent);
 }
@@ -179,25 +207,6 @@
 /* Bookmark list */
 .tab-palette-bookmark-list {
 	margin-top: 0;
-}
-
-/* Bookmark item */
-.tab-palette-bookmark-item {
-	padding: 10px;
-	margin-bottom: 5px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 5px;
-	cursor: pointer;
-	transition: background-color 0.2s;
-}
-
-.tab-palette-bookmark-item:hover {
-	background-color: var(--background-modifier-hover);
-}
-
-.tab-palette-bookmark-item.is-selected {
-	background-color: var(--background-modifier-active-hover);
-	border-color: var(--interactive-accent);
 }
 
 /* Star icon */
