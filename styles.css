@@ -23,24 +23,31 @@
 /* 2カラムレイアウト用コンテナ */
 .tab-palette-columns {
 	display: flex;
-	gap: 20px;
+	gap: 0; /* gapは削除してpaddingで制御 */
 	flex: 1;
 	min-height: 0; /* flexアイテム内でのスクロールに必要 */
 }
 
 /* カラム */
 .tab-palette-column {
-	flex: 1 1 0; /* コンテンツ幅に依存せず均等に分割 */
+	flex: 0 0 50%; /* 強制的に50%幅にする */
+	max-width: 50%;
 	display: flex;
 	flex-direction: column;
 	min-width: 0; /* 子要素のオーバーフロー防止 */
-	border-right: 1px solid var(--background-modifier-border);
-	padding-right: 10px;
+	padding: 0 10px; /* 左右にpadding */
 }
 
+/* 左カラム（ボーダーあり） */
+.tab-palette-column:first-child {
+	border-right: 1px solid var(--background-modifier-border);
+	padding-left: 0; /* 左端は詰める（必要なら調整） */
+}
+
+/* 右カラム */
 .tab-palette-column:last-child {
 	border-right: none;
-	padding-right: 0;
+	padding-right: 0; /* 右端は詰める（必要なら調整） */
 }
 
 /* キーボード操作中はカーソルを非表示 */
