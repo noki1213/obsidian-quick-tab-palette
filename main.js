@@ -1144,7 +1144,7 @@ class TabPaletteSettingTab extends PluginSettingTab {
 				.setName('日付フォーマット')
 				.setDesc('moment.js形式（例: YYYY-MM-DD (ddd)）')
 				.addText(text => text
-					.setPlaceholder('YYYY-MM-DD (ddd)')
+					.setPlaceholder('')
 					.setValue(this.plugin.settings.dailyNoteFormat)
 					.onChange(async (value) => {
 						this.plugin.settings.dailyNoteFormat = value || 'YYYY-MM-DD (ddd)';
@@ -1155,7 +1155,7 @@ class TabPaletteSettingTab extends PluginSettingTab {
 				.setName('保存先フォルダ')
 				.setDesc('デイリーノートが保存されるフォルダパス')
 				.addText(text => text
-					.setPlaceholder('00_DailyNote')
+					.setPlaceholder('')
 					.setValue(this.plugin.settings.dailyNoteFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.dailyNoteFolder = value || '00_DailyNote';
