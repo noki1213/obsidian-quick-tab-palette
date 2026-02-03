@@ -14,47 +14,44 @@ class TabPaletteModal extends Modal {
 	constructor(app, plugin) {
 		super(app);
 		this.plugin = plugin;
-		this.selectedIndex = 0;
+		
+		// 状態管理
+		this.activeSection = 'tabs'; // 'tabs' または 'bookmarks'
+		this.selectedTabIndex = 0;
+		this.selectedBookmarkIndex = 0;
+		
 		this.tabs = [];
 		this.bookmarks = [];
-		this.allItems = []; // tabs と bookmarks を統合したリスト
 	}
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.addClass('tab-palette-modal');
 
-		// タブ一覧を取得
+		// データ取得
 		this.tabs = this.getFilteredTabs();
-		
-		// ブックマークを取得
 		this.bookmarks = this.getBookmarks();
 		
-		// 統合リストを作成（tabs + bookmarks）
-		this.allItems = [
-			...this.tabs.map(tab => ({ type: 'tab', data: tab })),
-			...this.bookmarks.map(bookmark => ({ type: 'bookmark', data: bookmark }))
-		];
-
-		// タイトル
-		contentEl.createEl('h3', { text: 'Open Tabs' });
-
-		// タブリスト
-		const tabList = contentEl.createDiv('tab-palette-list');
-		this.renderTabs(tabList);
-
-		// ブックマークセクション
-		if (this.bookmarks.length > 0) {
-			// 区切り線
-			contentEl.createEl('hr', { cls: 'tab-palette-separator' });
-
-			// ブックマークタイトル
-			contentEl.createEl('h3', { text: 'Bookmarks' });
-
-			// ブックマークリスト
-			const bookmarkList = contentEl.createDiv('tab-palette-bookmark-list');
-			this.renderBookmarks(bookmarkList);
+		// 初期選択位置の調整
+		if (this.tabs.length === 0 && this.bookmarks.length > 0) {
+			this.activeSection = 'bookmarks';
 		}
+
+		// 2カラムコンテナを作成
+		const columnsEl = contentEl.createDiv('tab-palette-columns');
+
+		// --- 左カラム：タブ ---
+		const tabsColumn = columnsEl.createDiv('tab-palette-column');
+		tabsColumn.createEl('h3', { text: 'Open Tabs' });
+		const tabList = tabsColumn.createDiv('tab-palette-list');
+		
+		// --- 右カラム：ブックマーク ---
+		const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
+		bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
+		const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
+
+		// 初回描画
+		this.renderAll();
 
 		// マウスカーソルの表示/非表示を制御
 		const modalEl = this.modalEl;
@@ -69,7 +66,7 @@ class TabPaletteModal extends Modal {
 			modalEl.addClass('is-keyboard-mode');
 		};
 
-		// キーボードイベント
+		// キーボードイベント登録
 		this.scope.register([], 'ArrowUp', () => {
 			enableKeyboardMode();
 			this.moveSelection(-1);
@@ -79,6 +76,19 @@ class TabPaletteModal extends Modal {
 		this.scope.register([], 'ArrowDown', () => {
 			enableKeyboardMode();
 			this.moveSelection(1);
+			return false;
+		});
+		
+		// 左右キーでセクション移動
+		this.scope.register([], 'ArrowLeft', () => {
+			enableKeyboardMode();
+			this.switchSection('tabs');
+			return false;
+		});
+
+		this.scope.register([], 'ArrowRight', () => {
+			enableKeyboardMode();
+			this.switchSection('bookmarks');
 			return false;
 		});
 
@@ -98,6 +108,28 @@ class TabPaletteModal extends Modal {
 			this.pinSelectedTab();
 			return false;
 		});
+	}
+	
+	// 全体を再描画
+	renderAll() {
+		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
+		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
+		
+		if (tabContainer) this.renderTabs(tabContainer);
+		if (bookmarkContainer) this.renderBookmarks(bookmarkContainer);
+		
+		this.scrollToSelected();
+	}
+
+	// セクション切り替え
+	switchSection(section) {
+		if (section === 'bookmarks' && this.bookmarks.length === 0) return;
+		if (section === 'tabs' && this.tabs.length === 0) return;
+		
+		if (this.activeSection !== section) {
+			this.activeSection = section;
+			this.renderAll();
+		}
 	}
 
 	// 除外フォルダをフィルタリングしてタブを取得
@@ -151,11 +183,16 @@ class TabPaletteModal extends Modal {
 	renderTabs(container) {
 		container.empty();
 
+		if (this.tabs.length === 0) {
+			container.createDiv({ text: 'No open tabs', cls: 'tab-palette-empty-message' });
+			return;
+		}
+
 		this.tabs.forEach((tab, index) => {
 			const tabEl = container.createDiv('tab-palette-item');
 
-			// 統合リストでの選択状態を確認
-			if (index === this.selectedIndex) {
+			// 選択状態を確認
+			if (this.activeSection === 'tabs' && index === this.selectedTabIndex) {
 				tabEl.addClass('is-selected');
 			}
 
@@ -231,7 +268,8 @@ class TabPaletteModal extends Modal {
 
 			// クリックイベント
 			tabEl.addEventListener('click', () => {
-				this.selectedIndex = index;
+				this.activeSection = 'tabs';
+				this.selectedTabIndex = index;
 				this.openSelectedTab();
 			});
 		});
@@ -239,25 +277,26 @@ class TabPaletteModal extends Modal {
 
 	// 選択を移動
 	moveSelection(direction) {
-		this.selectedIndex += direction;
-
-		// 統合リストの長さでループ
-		const totalItems = this.allItems.length;
-		if (this.selectedIndex < 0) {
-			this.selectedIndex = totalItems - 1;
-		} else if (this.selectedIndex >= totalItems) {
-			this.selectedIndex = 0;
-		}
-
-		// 両方のリストを再描画
-		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
-		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
-		this.renderTabs(tabContainer);
-		if (bookmarkContainer) {
-			this.renderBookmarks(bookmarkContainer);
+		if (this.activeSection === 'tabs') {
+			this.selectedTabIndex += direction;
+			if (this.selectedTabIndex < 0) {
+				this.selectedTabIndex = 0;
+			} else if (this.selectedTabIndex >= this.tabs.length) {
+				this.selectedTabIndex = Math.max(0, this.tabs.length - 1);
+			}
+			const container = this.contentEl.querySelector('.tab-palette-list');
+			this.renderTabs(container);
+		} else {
+			this.selectedBookmarkIndex += direction;
+			if (this.selectedBookmarkIndex < 0) {
+				this.selectedBookmarkIndex = 0;
+			} else if (this.selectedBookmarkIndex >= this.bookmarks.length) {
+				this.selectedBookmarkIndex = Math.max(0, this.bookmarks.length - 1);
+			}
+			const container = this.contentEl.querySelector('.tab-palette-bookmark-list');
+			this.renderBookmarks(container);
 		}
 		
-		// 選択項目を表示範囲内にスクロール
 		this.scrollToSelected();
 	}
 	
@@ -269,75 +308,65 @@ class TabPaletteModal extends Modal {
 		}
 	}
 
-	// 選択中のタブを開く
+	// 選択中のタブ/ブックマークを開く
 	openSelectedTab() {
-		const selectedItem = this.allItems[this.selectedIndex];
-		if (!selectedItem) return;
-		
-		if (selectedItem.type === 'tab') {
-			// タブの場合：そのタブをアクティブに
-			this.app.workspace.setActiveLeaf(selectedItem.data.leaf, { focus: true });
+		if (this.activeSection === 'tabs') {
+			const tab = this.tabs[this.selectedTabIndex];
+			if (tab) {
+				this.app.workspace.setActiveLeaf(tab.leaf, { focus: true });
+			}
 		} else {
-			// ブックマークの場合：ファイルを開く
-			this.app.workspace.openLinkText(selectedItem.data.path, '', false);
+			const bookmark = this.bookmarks[this.selectedBookmarkIndex];
+			if (bookmark) {
+				this.app.workspace.openLinkText(bookmark.path, '', false);
+			}
 		}
 		this.close();
 	}
 
 	// 選択中のタブを閉じる
 	closeSelectedTab() {
-		const selectedItem = this.allItems[this.selectedIndex];
-		if (!selectedItem || selectedItem.type !== 'tab') return; // タブのみ閉じられる
+		if (this.activeSection !== 'tabs') return; // タブのみ閉じられる
 		
-		const tab = selectedItem.data;
+		const tab = this.tabs[this.selectedTabIndex];
+		if (!tab) return;
+		
 		tab.leaf.detach();
 		
 		// tabs配列から削除
-		const tabIndex = this.tabs.indexOf(tab);
-		if (tabIndex !== -1) {
-			this.tabs.splice(tabIndex, 1);
+		this.tabs.splice(this.selectedTabIndex, 1);
+		
+		// インデックス調整
+		if (this.selectedTabIndex >= this.tabs.length) {
+			this.selectedTabIndex = Math.max(0, this.tabs.length - 1);
 		}
 		
-		// allItemsを再構築
-		this.allItems = [
-			...this.tabs.map(t => ({ type: 'tab', data: t })),
-			...this.bookmarks.map(b => ({ type: 'bookmark', data: b }))
-		];
-
-		if (this.selectedIndex >= this.allItems.length) {
-			this.selectedIndex = Math.max(0, this.allItems.length - 1);
-		}
-
-		// タブがなくなったら閉じる
-		if (this.allItems.length === 0) {
+		// 再描画
+		const container = this.contentEl.querySelector('.tab-palette-list');
+		this.renderTabs(container);
+		
+		// タブがなくなったらフォーカスをブックマークに移すか、閉じるか検討
+		if (this.tabs.length === 0 && this.bookmarks.length > 0) {
+			this.activeSection = 'bookmarks';
+			this.renderAll();
+		} else if (this.tabs.length === 0 && this.bookmarks.length === 0) {
 			this.close();
-		} else {
-			// 再描画
-			const tabContainer = this.contentEl.querySelector('.tab-palette-list');
-			const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
-			this.renderTabs(tabContainer);
-			if (bookmarkContainer) {
-				this.renderBookmarks(bookmarkContainer);
-			}
 		}
 	}
 
 	// 選択中のタブをピン/アンピン
 	pinSelectedTab() {
-		const selectedItem = this.allItems[this.selectedIndex];
-		if (!selectedItem || selectedItem.type !== 'tab') return; // タブのみピン可能
+		if (this.activeSection !== 'tabs') return; // タブのみピン可能
 		
-		const tab = selectedItem.data;
+		const tab = this.tabs[this.selectedTabIndex];
+		if (!tab) return;
+		
 		tab.leaf.setPinned(!tab.isPinned);
 		tab.isPinned = !tab.isPinned;
 
 		// 再描画
-		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
-		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
-		this.renderTabs(tabContainer);
-		if (bookmarkContainer) {
-			this.renderBookmarks(bookmarkContainer);
-		}
+		const container = this.contentEl.querySelector('.tab-palette-list');
+		this.renderTabs(container);
 	}
 
 	// ファイルがブックマークされているかチェック
@@ -398,12 +427,16 @@ class TabPaletteModal extends Modal {
 	renderBookmarks(container) {
 		container.empty();
 
+		if (this.bookmarks.length === 0) {
+			container.createDiv({ text: 'No bookmarks', cls: 'tab-palette-empty-message' });
+			return;
+		}
+
 		this.bookmarks.forEach((bookmark, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
 			
-			// 統合リストでの選択状態を確認（tabs.length + index）
-			const globalIndex = this.tabs.length + index;
-			if (globalIndex === this.selectedIndex) {
+			// 選択状態を確認
+			if (this.activeSection === 'bookmarks' && index === this.selectedBookmarkIndex) {
 				itemEl.addClass('is-selected');
 			}
 
@@ -461,7 +494,8 @@ class TabPaletteModal extends Modal {
 
 			// クリックイベント
 			itemEl.addEventListener('click', () => {
-				this.selectedIndex = globalIndex;
+				this.activeSection = 'bookmarks';
+				this.selectedBookmarkIndex = index;
 				this.openSelectedTab();
 			});
 		});
