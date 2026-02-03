@@ -2,7 +2,7 @@ const { Plugin, Modal, PluginSettingTab, Setting, WorkspaceLeaf, Notice, setIcon
 
 // Default settings
 const DEFAULT_SETTINGS = {
-	excludedFolders: ['attachments', 'Attachments'],
+	excludedFolders: [],
 	showTags: true,
 	showPath: true,
 	sortOrder: 'recency', // 'recency' または 'opening-order'
