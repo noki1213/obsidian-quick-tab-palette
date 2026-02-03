@@ -1183,7 +1183,7 @@ class TabPalettePlugin extends Plugin {
 		// Command to open the tab palette
 		this.addCommand({
 			id: 'open-tab-palette',
-			name: 'タブパレットを開く',
+			name: 'Quick Tab Paletteを開く',
 			callback: () => {
 				new TabPaletteModal(this.app, this).open();
 			}
