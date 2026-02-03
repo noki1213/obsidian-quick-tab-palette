@@ -8,7 +8,7 @@
 
 /* Tab palette modal (content area) */
 .tab-palette-modal {
-	padding: 10px; /* パディングを少し減らす */
+	padding: 10px;
 	height: 100%;
 	display: flex;
 	flex-direction: column;
@@ -20,34 +20,57 @@
 	flex-shrink: 0;
 }
 
-/* Container for the 2-column layout */
+/* Search box */
+.tab-palette-search-container {
+	margin-bottom: 15px;
+	flex-shrink: 0;
+}
+
+.tab-palette-search-input {
+	width: 100%;
+	font-size: 1.2em;
+	padding: 10px;
+	border-radius: 5px;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-modifier-form-field);
+}
+
+.tab-palette-search-input:focus {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* Container for the 3-column layout */
 .tab-palette-columns {
 	display: flex;
-	gap: 0; /* gapは削除してpaddingで制御 */
+	gap: 0;
 	flex: 1;
-	min-height: 0; /* flexアイテム内でのスクロールに必要 */
+	min-height: 0;
+	overflow-x: auto; /* 横スクロールを有効化 */
+	overflow-y: hidden;
+	scroll-behavior: smooth;
 }
 
 /* Column */
 .tab-palette-column {
-	flex: 0 0 50%; /* 強制的に50%幅にする */
-	max-width: 50%;
+	flex: 0 0 320px; /* 固定幅（適宜調整） */
+	min-width: 320px;
+	max-width: 90vw; /* 画面幅よりは小さく */
 	display: flex;
 	flex-direction: column;
-	min-width: 0; /* 子要素のオーバーフロー防止 */
-	padding: 0 10px; /* 左右にpadding */
-}
-
-/* Left column (with border) */
-.tab-palette-column:first-child {
+	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
-	padding-left: 0; /* 左端は詰める（必要なら調整） */
 }
 
-/* Right column */
+/* No border on the last column */
 .tab-palette-column:last-child {
 	border-right: none;
-	padding-right: 0; /* 右端は詰める（必要なら調整） */
+	padding-right: 0;
+}
+
+/* First column */
+.tab-palette-column:first-child {
+	padding-left: 0;
 }
 
 /* Hide the cursor while navigating with the keyboard */
@@ -60,25 +83,26 @@
 }
 
 /* Disable hover effects while navigating with the keyboard */
-.modal.is-keyboard-mode .tab-palette-item:hover {
+.modal.is-keyboard-mode .tab-palette-item:hover,
+.modal.is-keyboard-mode .tab-palette-bookmark-item:hover,
+.modal.is-keyboard-mode .tab-palette-search-item:hover {
 	background-color: transparent;
 }
 
-.modal.is-keyboard-mode .tab-palette-bookmark-item:hover {
-	background-color: transparent;
-}
-
-/* Tab list and bookmark list */
+/* Tab list, bookmark list, and search results list */
 .tab-palette-list,
-.tab-palette-bookmark-list {
+.tab-palette-bookmark-list,
+.tab-palette-search-list {
 	margin-top: 0;
 	overflow-y: auto; /* スクロール可能に */
 	flex: 1;
 	padding-bottom: 10px;
 }
 
-/* Tab item */
-.tab-palette-item {
+/* Tab item, bookmark item, and search item */
+.tab-palette-item,
+.tab-palette-bookmark-item,
+.tab-palette-search-item {
 	padding: 10px;
 	margin-bottom: 5px;
 	border: 1px solid var(--background-modifier-border);
@@ -87,11 +111,15 @@
 	transition: background-color 0.2s;
 }
 
-.tab-palette-item:hover {
+.tab-palette-item:hover,
+.tab-palette-bookmark-item:hover,
+.tab-palette-search-item:hover {
 	background-color: var(--background-modifier-hover);
 }
 
-.tab-palette-item.is-selected {
+.tab-palette-item.is-selected,
+.tab-palette-bookmark-item.is-selected,
+.tab-palette-search-item.is-selected {
 	background-color: var(--background-modifier-active-hover);
 	border-color: var(--interactive-accent);
 }
@@ -179,25 +207,6 @@
 /* Bookmark list */
 .tab-palette-bookmark-list {
 	margin-top: 0;
-}
-
-/* Bookmark item */
-.tab-palette-bookmark-item {
-	padding: 10px;
-	margin-bottom: 5px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 5px;
-	cursor: pointer;
-	transition: background-color 0.2s;
-}
-
-.tab-palette-bookmark-item:hover {
-	background-color: var(--background-modifier-hover);
-}
-
-.tab-palette-bookmark-item.is-selected {
-	background-color: var(--background-modifier-active-hover);
-	border-color: var(--interactive-accent);
 }
 
 /* Star icon */
