@@ -8,10 +8,37 @@
   "alwaysOpenInNewTab": true,
   "recentlyClosed": [
     {
+      "path": "00_DailyNote/2026-02-04 (水).md",
+      "title": "2026-02-04 (水)",
+      "basename": "2026-02-04 (水)",
+      "extension": "md"
+    },
+    {
+      "path": "00_DailyNote/DailyNote一覧.md",
+      "title": "DailyNote一覧",
+      "basename": "DailyNote一覧",
+      "extension": "md"
+    },
+    {
+      "path": "Inbox/英語本棚.md",
+      "title": "英語本棚",
+      "basename": "英語本棚",
+      "extension": "md"
+    },
+    {
+      "path": "Inbox/生協/あんたっぷりたい焼　十勝産小豆使用.md",
+      "title": "あんたっぷりたい焼　十勝産小豆使用",
+      "basename": "あんたっぷりたい焼　十勝産小豆使用",
+      "extension": "md"
+    },
+    {
       "path": "33_Tech-and-Tools/ガジェット・ツール_Index.md",
       "title": "ガジェット・ツール_Index",
       "basename": "ガジェット・ツール_Index",
       "extension": "md"
     }
-  ]
+  ],
+  "enableDailyNotes": true,
+  "dailyNoteFormat": "YYYY-MM-DD (ddd)",
+  "dailyNoteFolder": "00_DailyNote"
 }
