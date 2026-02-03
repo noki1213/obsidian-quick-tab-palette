@@ -9,8 +9,8 @@ const DEFAULT_SETTINGS = {
 	alwaysOpenInNewTab: false,
 	recentlyClosed: [], // 最近閉じたタブの履歴
 	enableDailyNotes: true,
-	dailyNoteFormat: 'YYYY-MM-DD (ddd)',
-	dailyNoteFolder: '00_DailyNote'
+	dailyNoteFormat: '',
+	dailyNoteFolder: ''
 };
 
 // Tab palette modal
@@ -710,11 +710,11 @@ class TabPaletteModal extends Modal {
 			this.app.workspace.setActiveLeaf(leaf, { focus: true });
 			this.close();
 		} else if (fileToOpen) {
-			// Open the file (move to an existing tab if one is open, otherwise follow settings like opening a new tab)
-			// Check the tab palette's "always open in new tab" setting
-			// But is it fine to just use openLinkText here, or should this be controlled via getLeaf instead
-			// Use openLinkText to match the behavior of AQS and the standard switcher
-			const leaf = this.app.workspace.getLeaf(false);
+			// Open the file
+			// Check the settings to decide whether to always open in a new tab
+			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
+			
+			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
 			leaf.openFile(fileToOpen);
 			this.close();
 		} else {
@@ -885,8 +885,8 @@ class TabPaletteModal extends Modal {
 		}
 
 		const dailyNotes = [];
-		const format = this.plugin.settings.dailyNoteFormat;
-		const folder = this.plugin.settings.dailyNoteFolder;
+		const format = this.plugin.settings.dailyNoteFormat || 'YYYY-MM-DD (ddd)';
+		const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 		
 		// require moment.js (bundled with Obsidian)
 		const moment = window.moment;
@@ -984,7 +984,7 @@ class TabPaletteModal extends Modal {
 			}
 			
 			// Create the folder if it doesn't exist
-			const folder = this.plugin.settings.dailyNoteFolder;
+			const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 			if (folder) {
 				const folderExists = this.app.vault.getAbstractFileByPath(folder);
 				if (!folderExists) {
@@ -1209,36 +1209,6 @@ class TabPalettePlugin extends Plugin {
 
 		// Settings tab
 		this.addSettingTab(new TabPaletteSettingTab(this.app, this));
-
-		// Monkey patch for the "always open in new tab" feature
-		this.registerMonkeyPatches();
-	}
-
-	// Override Workspace.getLeaf so it always opens in a new tab
-	registerMonkeyPatches() {
-		const plugin = this;
-
-		// Save the original getLeaf method
-		const originalGetLeaf = Workspace.prototype.getLeaf;
-
-		// Override getLeaf
-		Workspace.prototype.getLeaf = function(newLeaf) {
-			// Always open in a new tab when "always open in new tab" is enabled
-			if (plugin.settings.alwaysOpenInNewTab) {
-				// Change to 'tab' when newLeaf is false or undefined
-				if (!newLeaf) {
-					newLeaf = 'tab';
-				}
-			}
-
-			// Call the original method
-			return originalGetLeaf.call(this, newLeaf);
-		};
-
-		// Revert this when the plugin is unloaded
-		this.register(() => {
-			Workspace.prototype.getLeaf = originalGetLeaf;
-		});
 	}
 
 	// Get info about the currently open tabs
