@@ -46,16 +46,10 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getTabs();
 		this.bookmarks = this.getBookmarksList();
 		
-		// 初期フィルタリング（全件表示）
-		this.performSearch('');
-
-		// 検索ボックスの作成
-		const searchContainer = contentEl.createDiv('tab-palette-search-container');
-		this.searchInput = searchContainer.createEl('input', {
-			type: 'text',
-			cls: 'tab-palette-search-input',
-			placeholder: 'Search tabs, bookmarks, and vault...'
-		});
+		// 初期状態（全件表示）
+		this.filteredTabs = this.tabs;
+		this.filteredBookmarks = this.bookmarks;
+		this.searchResults = []; // 初期は空にするか、全件出すか。ここでは空にする。
 
 		// 3カラムコンテナを作成
 		const columnsEl = contentEl.createDiv('tab-palette-columns');
@@ -63,6 +57,15 @@ class TabPaletteModal extends Modal {
 		// --- 左カラム：Search ---
 		const searchColumn = columnsEl.createDiv('tab-palette-column');
 		searchColumn.createEl('h3', { text: 'Vault Search' });
+		
+		// 検索ボックスを左カラム内に配置
+		const searchContainer = searchColumn.createDiv('tab-palette-search-container');
+		this.searchInput = searchContainer.createEl('input', {
+			type: 'text',
+			cls: 'tab-palette-search-input',
+			placeholder: 'Search vault...'
+		});
+		
 		const searchList = searchColumn.createDiv('tab-palette-search-list');
 		
 		// --- 中央カラム：Open Tabs ---
@@ -80,12 +83,18 @@ class TabPaletteModal extends Modal {
 
 		// イベントリスナー設定
 		this.searchInput.addEventListener('input', (e) => {
+			// IME入力中も検索したい場合はここはそのままでOK。
+			// もし確定後のみにしたい場合は compositionend イベントを使う手もあるが、
+			// リアルタイム検索ならinputで良い。
 			const query = e.target.value;
 			this.performSearch(query);
 			this.renderAll();
 		});
 
 		this.searchInput.addEventListener('keydown', (e) => {
+			// IME変換中のEnterは無視
+			if (e.isComposing) return;
+
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
 				this.searchInput.blur(); // フォーカスを外してリスト操作モードへ
@@ -121,11 +130,7 @@ class TabPaletteModal extends Modal {
 		
 		// 左右キーでセクション移動
 		this.scope.register([], 'ArrowLeft', (e) => {
-			// 検索ボックスにフォーカスがある場合は、カーソル移動を優先したいが、
-			// ユーザー要望「矢印キー左右で行き来できる」を優先し、かつ直感的にするために
-			// inputにフォーカスがある時はinputのデフォルト動作（文字移動）に任せる。
 			if (document.activeElement === this.searchInput) return; 
-			
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
@@ -133,7 +138,6 @@ class TabPaletteModal extends Modal {
 
 		this.scope.register([], 'ArrowRight', (e) => {
 			if (document.activeElement === this.searchInput) return;
-
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
@@ -146,14 +150,20 @@ class TabPaletteModal extends Modal {
 		
 		// 文字キー入力時、検索ボックスにフォーカスがない場合はフォーカスを戻す
 		modalEl.addEventListener('keydown', (e) => {
+			// IME入力開始時や文字入力時
 			if (document.activeElement !== this.searchInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				// Arrowキーなどは除く
 				this.searchInput.focus();
+				// ここで activeSection を search に切り替えるかはお好みだが、
+				// ユーザー体験的には検索しようとしているので search に移動した方が自然かも？
+				this.activeSection = 'search';
+				this.renderAll();
 			}
 		});
 
 		// 初期フォーカスとスクロール位置
 		this.searchInput.focus();
-		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
+		this.activeSection = 'tabs'; // 初期選択はOpen Tabs（要望通り）
 		this.renderAll();
 		
 		// 真ん中のカラムが見えるようにスクロール調整
@@ -166,27 +176,19 @@ class TabPaletteModal extends Modal {
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
 		
-		// 1. Tabs フィルタリング
-		this.filteredTabs = this.tabs.filter(tab => this.matchFile(tab.file, this.searchQuery));
+		// 1. Tabs フィルタリング -> しない（要望：検索結果は反映しないでほしい）
+		this.filteredTabs = this.tabs;
 		
-		// 2. Bookmarks フィルタリング
-		this.filteredBookmarks = this.bookmarks.filter(b => this.matchFile(b.file, this.searchQuery));
+		// 2. Bookmarks フィルタリング -> しない
+		this.filteredBookmarks = this.bookmarks;
 		
-		// 3. Search Results (TabsとBookmarks以外から検索)
-		// 重複を避けるため、パスのセットを作成
-		const openPaths = new Set(this.tabs.map(t => t.path));
-		// ブックマークも含めるかは好みだが、AQSっぽくするなら「全検索」なので含めてもいいが、
-		// UIが分かれているので、左カラムは「それ以外」の方が便利かもしれない。
-		// しかし「Vault全体検索」という要望なので、重複しても出すのが正解か。
-		// ここでは「重複を排除して、まだ出ていないファイル」を優先して出すロジックにする？
-		// いや、ユーザーは「Search (Vault全体)」と言っているので、重複してても出す。
-		
+		// 3. Search Results (Vault全体)
 		if (!this.searchQuery) {
-			this.searchResults = []; // クエリなしの時は検索結果なし（最近使ったファイルとか出す手もあるが）
+			this.searchResults = []; 
 		} else {
 			this.searchResults = this.vaultFiles
 				.filter(file => this.matchFile(file, this.searchQuery))
-				.slice(0, 50); // パフォーマンスのため件数制限
+				.slice(0, 50);
 		}
 		
 		// インデックスのリセットと補正

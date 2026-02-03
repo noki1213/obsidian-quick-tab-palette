@@ -53,11 +53,10 @@
 
 /* カラム */
 .tab-palette-column {
-	flex: 0 0 320px; /* 固定幅（適宜調整） */
-	min-width: 320px;
-	max-width: 90vw; /* 画面幅よりは小さく */
+	flex: 1 1 0; /* 3等分 */
 	display: flex;
 	flex-direction: column;
+	min-width: 0; /* 子要素のオーバーフロー防止 */
 	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
 }
