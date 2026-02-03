@@ -1,14 +1,3 @@
-const { Plugin, Modal, PluginSettingTab, Setting, WorkspaceLeaf, Notice, setIcon, Workspace } = require('obsidian');
-
-// デフォルト設定
-const DEFAULT_SETTINGS = {
-	excludedFolders: ['attachments', 'Attachments'],
-	showTags: true,
-	showPath: true,
-	sortOrder: 'recency', // 'recency' または 'opening-order'
-	alwaysOpenInNewTab: false
-};
-
 // タブパレットモーダル
 class TabPaletteModal extends Modal {
 	constructor(app, plugin) {
@@ -16,40 +5,61 @@ class TabPaletteModal extends Modal {
 		this.plugin = plugin;
 		
 		// 状態管理
-		this.activeSection = 'tabs'; // 'tabs' または 'bookmarks'
+		this.activeSection = 'tabs'; // 'search', 'tabs', 'bookmarks'
 		this.selectedTabIndex = 0;
 		this.selectedBookmarkIndex = 0;
+		this.selectedSearchIndex = 0;
+		
+		this.searchQuery = '';
+		this.vaultFiles = []; // 全ファイルキャッシュ
+		
+		this.filteredTabs = [];
+		this.filteredBookmarks = [];
+		this.searchResults = [];
 		
 		this.tabs = [];
 		this.bookmarks = [];
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl, modalEl } = this;
 		
 		// モーダル全体のサイズ制御用クラスを追加
 		modalEl.addClass('mod-tab-palette');
-		
 		contentEl.addClass('tab-palette-modal');
 
-		// データ取得
-		this.tabs = this.getFilteredTabs();
-		this.bookmarks = this.getBookmarks();
-		
-		// 初期選択位置の調整
-		if (this.tabs.length === 0 && this.bookmarks.length > 0) {
-			this.activeSection = 'bookmarks';
-		}
+		// 全ファイルを取得（非同期でキャッシュ）
+		this.vaultFiles = this.app.vault.getFiles();
 
-		// 2カラムコンテナを作成
+		// データ初期取得
+		this.tabs = this.getTabs();
+		this.bookmarks = this.getBookmarksList();
+		
+		// 初期フィルタリング（全件表示）
+		this.performSearch('');
+
+		// 検索ボックスの作成
+		const searchContainer = contentEl.createDiv('tab-palette-search-container');
+		this.searchInput = searchContainer.createEl('input', {
+			type: 'text',
+			cls: 'tab-palette-search-input',
+			placeholder: 'Search tabs, bookmarks, and vault...'
+		});
+
+		// 3カラムコンテナを作成
 		const columnsEl = contentEl.createDiv('tab-palette-columns');
 
-		// --- 左カラム：タブ ---
+		// --- 左カラム：Search ---
+		const searchColumn = columnsEl.createDiv('tab-palette-column');
+		searchColumn.createEl('h3', { text: 'Vault Search' });
+		const searchList = searchColumn.createDiv('tab-palette-search-list');
+		
+		// --- 中央カラム：Open Tabs ---
 		const tabsColumn = columnsEl.createDiv('tab-palette-column');
 		tabsColumn.createEl('h3', { text: 'Open Tabs' });
 		const tabList = tabsColumn.createDiv('tab-palette-list');
 		
-		// --- 右カラム：ブックマーク ---
+		// --- 右カラム：Bookmarks ---
 		const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
 		bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
 		const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
@@ -57,8 +67,23 @@ class TabPaletteModal extends Modal {
 		// 初回描画
 		this.renderAll();
 
-		// マウスカーソルの表示/非表示を制御
-		// const modalEl = this.modalEl; // 削除
+		// イベントリスナー設定
+		this.searchInput.addEventListener('input', (e) => {
+			const query = e.target.value;
+			this.performSearch(query);
+			this.renderAll();
+		});
+
+		this.searchInput.addEventListener('keydown', (e) => {
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				this.searchInput.blur(); // フォーカスを外してリスト操作モードへ
+				this.modalEl.focus();
+			} else if (e.key === 'Enter') {
+				e.preventDefault();
+				this.openSelectedTab();
+			}
+		});
 
 		// マウス移動でカーソルを表示
 		modalEl.addEventListener('mousemove', () => {
@@ -70,55 +95,122 @@ class TabPaletteModal extends Modal {
 			modalEl.addClass('is-keyboard-mode');
 		};
 
-		// キーボードイベント登録
-		this.scope.register([], 'ArrowUp', () => {
+		// キーボードイベント登録 (リスト操作)
+		this.scope.register([], 'ArrowUp', (e) => {
 			enableKeyboardMode();
 			this.moveSelection(-1);
 			return false;
 		});
 
-		this.scope.register([], 'ArrowDown', () => {
+		this.scope.register([], 'ArrowDown', (e) => {
 			enableKeyboardMode();
 			this.moveSelection(1);
 			return false;
 		});
 		
 		// 左右キーでセクション移動
-		this.scope.register([], 'ArrowLeft', () => {
+		this.scope.register([], 'ArrowLeft', (e) => {
+			// 検索ボックスにフォーカスがある場合は、カーソル移動を優先したいが、
+			// ユーザー要望「矢印キー左右で行き来できる」を優先し、かつ直感的にするために
+			// inputにフォーカスがある時はinputのデフォルト動作（文字移動）に任せる。
+			if (document.activeElement === this.searchInput) return; 
+			
 			enableKeyboardMode();
-			this.switchSection('tabs');
+			this.switchSection('left');
 			return false;
 		});
 
-		this.scope.register([], 'ArrowRight', () => {
+		this.scope.register([], 'ArrowRight', (e) => {
+			if (document.activeElement === this.searchInput) return;
+
 			enableKeyboardMode();
-			this.switchSection('bookmarks');
+			this.switchSection('right');
 			return false;
 		});
 
-		this.scope.register([], 'Enter', () => {
+		this.scope.register([], 'Enter', (e) => {
 			this.openSelectedTab();
 			return false;
 		});
-
-		this.scope.register([], 'w', () => {
-			enableKeyboardMode();
-			this.closeSelectedTab();
-			return false;
+		
+		// 文字キー入力時、検索ボックスにフォーカスがない場合はフォーカスを戻す
+		modalEl.addEventListener('keydown', (e) => {
+			if (document.activeElement !== this.searchInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				this.searchInput.focus();
+			}
 		});
 
-		this.scope.register([], 'p', () => {
-			enableKeyboardMode();
-			this.pinSelectedTab();
-			return false;
-		});
+		// 初期フォーカスとスクロール位置
+		this.searchInput.focus();
+		this.activeSection = 'tabs'; // 初期選択はOpen Tabs
+		this.renderAll();
+		
+		// 真ん中のカラムが見えるようにスクロール調整
+		setTimeout(() => {
+			tabsColumn.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
+		}, 10);
 	}
 	
+	// 検索実行
+	performSearch(query) {
+		this.searchQuery = query.toLowerCase();
+		
+		// 1. Tabs フィルタリング
+		this.filteredTabs = this.tabs.filter(tab => this.matchFile(tab.file, this.searchQuery));
+		
+		// 2. Bookmarks フィルタリング
+		this.filteredBookmarks = this.bookmarks.filter(b => this.matchFile(b.file, this.searchQuery));
+		
+		// 3. Search Results (TabsとBookmarks以外から検索)
+		// 重複を避けるため、パスのセットを作成
+		const openPaths = new Set(this.tabs.map(t => t.path));
+		// ブックマークも含めるかは好みだが、AQSっぽくするなら「全検索」なので含めてもいいが、
+		// UIが分かれているので、左カラムは「それ以外」の方が便利かもしれない。
+		// しかし「Vault全体検索」という要望なので、重複しても出すのが正解か。
+		// ここでは「重複を排除して、まだ出ていないファイル」を優先して出すロジックにする？
+		// いや、ユーザーは「Search (Vault全体)」と言っているので、重複してても出す。
+		
+		if (!this.searchQuery) {
+			this.searchResults = []; // クエリなしの時は検索結果なし（最近使ったファイルとか出す手もあるが）
+		} else {
+			this.searchResults = this.vaultFiles
+				.filter(file => this.matchFile(file, this.searchQuery))
+				.slice(0, 50); // パフォーマンスのため件数制限
+		}
+		
+		// インデックスのリセットと補正
+		this.selectedTabIndex = Math.min(this.selectedTabIndex, Math.max(0, this.filteredTabs.length - 1));
+		this.selectedBookmarkIndex = Math.min(this.selectedBookmarkIndex, Math.max(0, this.filteredBookmarks.length - 1));
+		this.selectedSearchIndex = 0;
+	}
+	
+	// ファイルマッチングロジック
+	matchFile(file, query) {
+		if (!query) return true;
+		if (!file) return false;
+		
+		// ファイル名
+		if (file.name.toLowerCase().includes(query)) return true;
+		
+		// パス
+		if (file.path.toLowerCase().includes(query)) return true;
+		
+		// タグ (キャッシュから取得)
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (cache && cache.tags) {
+			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
+		}
+		
+		return false;
+	}
+
 	// 全体を再描画
 	renderAll() {
+		const searchContainer = this.contentEl.querySelector('.tab-palette-search-list');
 		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
 		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
 		
+		if (searchContainer) this.renderSearchResults(searchContainer);
 		if (tabContainer) this.renderTabs(tabContainer);
 		if (bookmarkContainer) this.renderBookmarks(bookmarkContainer);
 		
@@ -126,18 +218,42 @@ class TabPaletteModal extends Modal {
 	}
 
 	// セクション切り替え
-	switchSection(section) {
-		if (section === 'bookmarks' && this.bookmarks.length === 0) return;
-		if (section === 'tabs' && this.tabs.length === 0) return;
+	switchSection(direction) {
+		const sections = ['search', 'tabs', 'bookmarks'];
+		let currentIndex = sections.indexOf(this.activeSection);
 		
-		if (this.activeSection !== section) {
-			this.activeSection = section;
+		if (direction === 'right') {
+			currentIndex++;
+		} else if (direction === 'left') {
+			currentIndex--;
+		} else if (typeof direction === 'string' && sections.includes(direction)) {
+			currentIndex = sections.indexOf(direction);
+		}
+		
+		// 範囲制限
+		if (currentIndex < 0) currentIndex = 0;
+		if (currentIndex >= sections.length) currentIndex = sections.length - 1;
+		
+		const nextSection = sections[currentIndex];
+		
+		// 空のセクションには移動しない（オプション）
+		// if (nextSection === 'search' && this.searchResults.length === 0) ...
+		
+		if (this.activeSection !== nextSection) {
+			this.activeSection = nextSection;
 			this.renderAll();
+			
+			// カラムが見えるようにスクロール
+			const container = this.contentEl.querySelector('.tab-palette-columns');
+			const targetColumn = container.children[currentIndex];
+			if (targetColumn) {
+				targetColumn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+			}
 		}
 	}
 
-	// 除外フォルダをフィルタリングしてタブを取得
-	getFilteredTabs() {
+	// タブ一覧を取得 (生データ)
+	getTabs() {
 		const tabs = [];
 		const workspace = this.app.workspace;
 
@@ -147,7 +263,6 @@ class TabPaletteModal extends Modal {
 				const file = this.app.vault.getAbstractFileByPath(viewState.state.file);
 
 				if (file) {
-					// 除外フォルダのチェック
 					let isExcluded = false;
 					for (const folder of this.plugin.settings.excludedFolders) {
 						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
@@ -169,33 +284,30 @@ class TabPaletteModal extends Modal {
 				}
 			}
 		});
-
-		// 並び順
+		
 		if (this.plugin.settings.sortOrder === 'recency') {
-			// 履歴順（最近開いた順）
-			tabs.sort((a, b) => {
-				const timeA = a.leaf.activeTime || 0;
-				const timeB = b.leaf.activeTime || 0;
-				return timeB - timeA;
-			});
+			tabs.sort((a, b) => (b.leaf.activeTime || 0) - (a.leaf.activeTime || 0));
 		}
-
 		return tabs;
+	}
+	
+	// 除外フォルダをフィルタリングしてタブを取得 (今回は使用しない、performSearchで実施)
+	getFilteredTabs() {
+		return this.getTabs();
 	}
 
 	// タブを表示
 	renderTabs(container) {
 		container.empty();
 
-		if (this.tabs.length === 0) {
-			container.createDiv({ text: 'No open tabs', cls: 'tab-palette-empty-message' });
+		if (this.filteredTabs.length === 0) {
+			container.createDiv({ text: 'No matching tabs', cls: 'tab-palette-empty-message' });
 			return;
 		}
 
-		this.tabs.forEach((tab, index) => {
+		this.filteredTabs.forEach((tab, index) => {
 			const tabEl = container.createDiv('tab-palette-item');
 
-			// 選択状態を確認
 			if (this.activeSection === 'tabs' && index === this.selectedTabIndex) {
 				tabEl.addClass('is-selected');
 			}
@@ -204,73 +316,8 @@ class TabPaletteModal extends Modal {
 				tabEl.addClass('is-pinned');
 			}
 
-			// メインの1行コンテナ
-			const entryEl = tabEl.createDiv('tab-palette-entry');
+			this.renderEntryContent(tabEl, tab);
 
-			// 左側：ピンアイコン + タブ名 + タグ
-			const leftEl = entryEl.createDiv('tab-palette-left');
-
-			// ピンアイコン
-			if (tab.isPinned) {
-				const pinIcon = leftEl.createSpan('tab-palette-pin-icon');
-				setIcon(pinIcon, 'pin');
-			}
-
-			// ブックマークアイコン
-			if (tab.isBookmarked) {
-				const starIcon = leftEl.createSpan('tab-palette-star-icon');
-				setIcon(starIcon, 'star');
-			}
-
-			// タブ名
-			const nameText = leftEl.createSpan('tab-palette-name-text');
-			nameText.setText(tab.name);
-
-			// タグ（タイトルの右側）
-			if (this.plugin.settings.showTags) {
-				// ファイルのメタデータからタグを取得
-				const cache = this.app.metadataCache.getFileCache(tab.file);
-				const allTags = [];
-
-				// インライン形式のタグ（本文中の #tag）
-				if (cache && cache.tags) {
-					allTags.push(...cache.tags.map(t => t.tag));
-				}
-
-				// フロントマターのタグ
-				if (cache && cache.frontmatter && cache.frontmatter.tags) {
-					const fmTags = cache.frontmatter.tags;
-					if (Array.isArray(fmTags)) {
-						allTags.push(...fmTags.map(t => '#' + t));
-					} else if (typeof fmTags === 'string') {
-						allTags.push('#' + fmTags);
-					}
-				}
-
-				if (allTags.length > 0) {
-					const tagsEl = leftEl.createSpan('tab-palette-tags');
-					tagsEl.setText(allTags.join(' '));
-				}
-			}
-
-			// 右側：パス
-			if (this.plugin.settings.showPath) {
-				const rightEl = entryEl.createDiv('tab-palette-right');
-
-				// フォルダアイコン
-				const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
-				setIcon(folderIcon, 'folder');
-
-				// パス
-				const pathEl = rightEl.createSpan('tab-palette-path');
-				// ディレクトリ部分のみを表示（ファイル名を除く）
-				const pathParts = tab.path.split('/');
-				pathParts.pop(); // 最後の要素（ファイル名）を除く
-				const dirPath = pathParts.join('/') || '/';
-				pathEl.setText(dirPath);
-			}
-
-			// クリックイベント
 			tabEl.addEventListener('click', () => {
 				this.activeSection = 'tabs';
 				this.selectedTabIndex = index;
@@ -278,30 +325,139 @@ class TabPaletteModal extends Modal {
 			});
 		});
 	}
+	
+	// ブックマークを表示
+	renderBookmarks(container) {
+		container.empty();
+
+		if (this.filteredBookmarks.length === 0) {
+			container.createDiv({ text: 'No matching bookmarks', cls: 'tab-palette-empty-message' });
+			return;
+		}
+
+		this.filteredBookmarks.forEach((bookmark, index) => {
+			const itemEl = container.createDiv('tab-palette-bookmark-item');
+			
+			if (this.activeSection === 'bookmarks' && index === this.selectedBookmarkIndex) {
+				itemEl.addClass('is-selected');
+			}
+
+			this.renderEntryContent(itemEl, bookmark);
+
+			itemEl.addEventListener('click', () => {
+				this.activeSection = 'bookmarks';
+				this.selectedBookmarkIndex = index;
+				this.openSelectedTab();
+			});
+		});
+	}
+
+	// 検索結果を表示
+	renderSearchResults(container) {
+		container.empty();
+		
+		if (this.searchResults.length === 0) {
+			const msg = this.searchQuery ? 'No results found' : 'Type to search...';
+			container.createDiv({ text: msg, cls: 'tab-palette-empty-message' });
+			return;
+		}
+		
+		this.searchResults.forEach((file, index) => {
+			const itemEl = container.createDiv('tab-palette-search-item');
+			
+			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
+				itemEl.addClass('is-selected');
+			}
+			
+			// 共通レンダリング用にオブジェクト整形
+			const itemData = {
+				file: file,
+				name: file.basename,
+				path: file.path,
+				isPinned: false, // 検索結果にはピン情報は持たせない（必要なら取得可）
+				isBookmarked: this.isFileBookmarked(file.path)
+			};
+			
+			this.renderEntryContent(itemEl, itemData);
+			
+			itemEl.addEventListener('click', () => {
+				this.activeSection = 'search';
+				this.selectedSearchIndex = index;
+				this.openSelectedTab();
+			});
+		});
+	}
+
+	// アイテムの中身を描画（共通化）
+	renderEntryContent(container, item) {
+		const entryEl = container.createDiv('tab-palette-entry');
+		const leftEl = entryEl.createDiv('tab-palette-left');
+
+		if (item.isPinned) {
+			const pinIcon = leftEl.createSpan('tab-palette-pin-icon');
+			setIcon(pinIcon, 'pin');
+		}
+
+		if (item.isBookmarked) {
+			const starIcon = leftEl.createSpan('tab-palette-star-icon');
+			setIcon(starIcon, 'star');
+		} else {
+			// アイコンの位置合わせのためのダミー、あるいはファイルアイコン？
+			// ここでは何も表示しない
+		}
+
+		const nameText = leftEl.createSpan('tab-palette-name-text');
+		nameText.setText(item.name);
+
+		if (this.plugin.settings.showTags) {
+			const cache = this.app.metadataCache.getFileCache(item.file);
+			const allTags = [];
+			if (cache && cache.tags) allTags.push(...cache.tags.map(t => t.tag));
+			if (cache && cache.frontmatter && cache.frontmatter.tags) {
+				const fmTags = cache.frontmatter.tags;
+				if (Array.isArray(fmTags)) allTags.push(...fmTags.map(t => '#' + t));
+				else if (typeof fmTags === 'string') allTags.push('#' + fmTags);
+			}
+			if (allTags.length > 0) {
+				const tagsEl = leftEl.createSpan('tab-palette-tags');
+				tagsEl.setText(allTags.join(' '));
+			}
+		}
+
+		if (this.plugin.settings.showPath) {
+			const rightEl = entryEl.createDiv('tab-palette-right');
+			const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
+			setIcon(folderIcon, 'folder');
+			
+			const pathEl = rightEl.createSpan('tab-palette-path');
+			const pathParts = item.path.split('/');
+			pathParts.pop();
+			const dirPath = pathParts.join('/') || '/';
+			pathEl.setText(dirPath);
+		}
+	}
 
 	// 選択を移動
 	moveSelection(direction) {
 		if (this.activeSection === 'tabs') {
-			this.selectedTabIndex += direction;
-			if (this.selectedTabIndex < 0) {
-				this.selectedTabIndex = 0;
-			} else if (this.selectedTabIndex >= this.tabs.length) {
-				this.selectedTabIndex = Math.max(0, this.tabs.length - 1);
-			}
-			const container = this.contentEl.querySelector('.tab-palette-list');
-			this.renderTabs(container);
-		} else {
-			this.selectedBookmarkIndex += direction;
-			if (this.selectedBookmarkIndex < 0) {
-				this.selectedBookmarkIndex = 0;
-			} else if (this.selectedBookmarkIndex >= this.bookmarks.length) {
-				this.selectedBookmarkIndex = Math.max(0, this.bookmarks.length - 1);
-			}
-			const container = this.contentEl.querySelector('.tab-palette-bookmark-list');
-			this.renderBookmarks(container);
+			this.selectedTabIndex = this.clampIndex(this.selectedTabIndex + direction, this.filteredTabs.length);
+			this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
+		} else if (this.activeSection === 'bookmarks') {
+			this.selectedBookmarkIndex = this.clampIndex(this.selectedBookmarkIndex + direction, this.filteredBookmarks.length);
+			this.renderBookmarks(this.contentEl.querySelector('.tab-palette-bookmark-list'));
+		} else if (this.activeSection === 'search') {
+			this.selectedSearchIndex = this.clampIndex(this.selectedSearchIndex + direction, this.searchResults.length);
+			this.renderSearchResults(this.contentEl.querySelector('.tab-palette-search-list'));
 		}
 		
 		this.scrollToSelected();
+	}
+	
+	clampIndex(index, length) {
+		if (length === 0) return 0;
+		if (index < 0) return 0;
+		if (index >= length) return length - 1;
+		return index;
 	}
 	
 	// 選択中の項目をスクロールして表示
@@ -312,65 +468,65 @@ class TabPaletteModal extends Modal {
 		}
 	}
 
-	// 選択中のタブ/ブックマークを開く
+	// 選択中の項目を開く
 	openSelectedTab() {
+		let fileToOpen = null;
+		let leaf = null;
+
 		if (this.activeSection === 'tabs') {
-			const tab = this.tabs[this.selectedTabIndex];
-			if (tab) {
-				this.app.workspace.setActiveLeaf(tab.leaf, { focus: true });
-			}
-		} else {
-			const bookmark = this.bookmarks[this.selectedBookmarkIndex];
-			if (bookmark) {
-				this.app.workspace.openLinkText(bookmark.path, '', false);
-			}
+			const tab = this.filteredTabs[this.selectedTabIndex];
+			if (tab) leaf = tab.leaf;
+		} else if (this.activeSection === 'bookmarks') {
+			const bookmark = this.filteredBookmarks[this.selectedBookmarkIndex];
+			if (bookmark) fileToOpen = bookmark.file;
+		} else if (this.activeSection === 'search') {
+			const result = this.searchResults[this.selectedSearchIndex];
+			if (result) fileToOpen = result;
 		}
-		this.close();
+
+		if (leaf) {
+			this.app.workspace.setActiveLeaf(leaf, { focus: true });
+			this.close();
+		} else if (fileToOpen) {
+			// ファイルを開く（既存のタブがあればそこに移動、なければ新規タブなど設定に従う）
+			// タブパレットの「常に新規タブで開く」設定を確認
+			// しかしここはシンプルに openLinkText でいいか、あるいは getLeaf で制御するか
+			// AQSや標準スイッチャーの挙動に合わせるなら openLinkText
+			const leaf = this.app.workspace.getLeaf(false);
+			leaf.openFile(fileToOpen);
+			this.close();
+		} else {
+			// 何も選択されていない場合、何もしないか閉じる
+			// this.close();
+		}
 	}
 
-	// 選択中のタブを閉じる
+	// 選択中のタブを閉じる (タブセクションのみ)
 	closeSelectedTab() {
-		if (this.activeSection !== 'tabs') return; // タブのみ閉じられる
+		if (this.activeSection !== 'tabs') return;
 		
-		const tab = this.tabs[this.selectedTabIndex];
+		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab) return;
 		
 		tab.leaf.detach();
 		
-		// tabs配列から削除
-		this.tabs.splice(this.selectedTabIndex, 1);
-		
-		// インデックス調整
-		if (this.selectedTabIndex >= this.tabs.length) {
-			this.selectedTabIndex = Math.max(0, this.tabs.length - 1);
-		}
-		
-		// 再描画
-		const container = this.contentEl.querySelector('.tab-palette-list');
-		this.renderTabs(container);
-		
-		// タブがなくなったらフォーカスをブックマークに移すか、閉じるか検討
-		if (this.tabs.length === 0 && this.bookmarks.length > 0) {
-			this.activeSection = 'bookmarks';
-			this.renderAll();
-		} else if (this.tabs.length === 0 && this.bookmarks.length === 0) {
-			this.close();
-		}
+		// データ更新
+		this.tabs = this.getTabs();
+		this.performSearch(this.searchQuery); // 再フィルタリング
+		this.renderAll();
 	}
 
 	// 選択中のタブをピン/アンピン
 	pinSelectedTab() {
-		if (this.activeSection !== 'tabs') return; // タブのみピン可能
+		if (this.activeSection !== 'tabs') return;
 		
-		const tab = this.tabs[this.selectedTabIndex];
+		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab) return;
 		
 		tab.leaf.setPinned(!tab.isPinned);
-		tab.isPinned = !tab.isPinned;
+		tab.isPinned = !tab.isPinned; // ローカル更新
 
-		// 再描画
-		const container = this.contentEl.querySelector('.tab-palette-list');
-		this.renderTabs(container);
+		this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
 	}
 
 	// ファイルがブックマークされているかチェック
@@ -388,8 +544,8 @@ class TabPaletteModal extends Modal {
 		});
 	}
 
-	// ブックマークを取得
-	getBookmarks() {
+	// ブックマークを取得 (生データ)
+	getBookmarksList() {
 		const bookmarks = [];
 		const bookmarkPlugin = this.app.internalPlugins?.plugins?.bookmarks;
 
@@ -400,11 +556,9 @@ class TabPaletteModal extends Modal {
 		const bookmarkItems = bookmarkPlugin.instance?.items || [];
 
 		bookmarkItems.forEach(item => {
-			// ファイルのブックマークのみを取得
 			if (item.type === 'file' && item.path) {
 				const file = this.app.vault.getAbstractFileByPath(item.path);
 				if (file) {
-					// 除外フォルダのチェック
 					let isExcluded = false;
 					for (const folder of this.plugin.settings.excludedFolders) {
 						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
@@ -426,84 +580,9 @@ class TabPaletteModal extends Modal {
 
 		return bookmarks;
 	}
-
-	// ブックマークを表示
-	renderBookmarks(container) {
-		container.empty();
-
-		if (this.bookmarks.length === 0) {
-			container.createDiv({ text: 'No bookmarks', cls: 'tab-palette-empty-message' });
-			return;
-		}
-
-		this.bookmarks.forEach((bookmark, index) => {
-			const itemEl = container.createDiv('tab-palette-bookmark-item');
-			
-			// 選択状態を確認
-			if (this.activeSection === 'bookmarks' && index === this.selectedBookmarkIndex) {
-				itemEl.addClass('is-selected');
-			}
-
-			// メインの1行コンテナ
-			const entryEl = itemEl.createDiv('tab-palette-entry');
-
-			// 左側：スターアイコン + ファイル名
-			const leftEl = entryEl.createDiv('tab-palette-left');
-
-			// スターアイコン
-			const starIcon = leftEl.createSpan('tab-palette-star-icon');
-			setIcon(starIcon, 'star');
-
-			// ファイル名
-			const nameText = leftEl.createSpan('tab-palette-name-text');
-			nameText.setText(bookmark.name);
-
-			// タグ（ブックマークにもタグを表示）
-			if (this.plugin.settings.showTags) {
-				const cache = this.app.metadataCache.getFileCache(bookmark.file);
-				const allTags = [];
-
-				if (cache && cache.tags) {
-					allTags.push(...cache.tags.map(t => t.tag));
-				}
-
-				if (cache && cache.frontmatter && cache.frontmatter.tags) {
-					const fmTags = cache.frontmatter.tags;
-					if (Array.isArray(fmTags)) {
-						allTags.push(...fmTags.map(t => '#' + t));
-					} else if (typeof fmTags === 'string') {
-						allTags.push('#' + fmTags);
-					}
-				}
-
-				if (allTags.length > 0) {
-					const tagsEl = leftEl.createSpan('tab-palette-tags');
-					tagsEl.setText(allTags.join(' '));
-				}
-			}
-
-			// 右側：パス
-			if (this.plugin.settings.showPath) {
-				const rightEl = entryEl.createDiv('tab-palette-right');
-
-				const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
-				setIcon(folderIcon, 'folder');
-
-				const pathEl = rightEl.createSpan('tab-palette-path');
-				const pathParts = bookmark.path.split('/');
-				pathParts.pop();
-				const dirPath = pathParts.join('/') || '/';
-				pathEl.setText(dirPath);
-			}
-
-			// クリックイベント
-			itemEl.addEventListener('click', () => {
-				this.activeSection = 'bookmarks';
-				this.selectedBookmarkIndex = index;
-				this.openSelectedTab();
-			});
-		});
-	}
+	
+	// 後方互換性のため残す（使わない）
+	getBookmarks() { return this.getBookmarksList(); }
 
 	onClose() {
 		const { contentEl } = this;
