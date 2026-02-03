@@ -1,3 +1,14 @@
+const { Plugin, Modal, PluginSettingTab, Setting, WorkspaceLeaf, Notice, setIcon, Workspace } = require('obsidian');
+
+// デフォルト設定
+const DEFAULT_SETTINGS = {
+	excludedFolders: ['attachments', 'Attachments'],
+	showTags: true,
+	showPath: true,
+	sortOrder: 'recency', // 'recency' または 'opening-order'
+	alwaysOpenInNewTab: false
+};
+
 // タブパレットモーダル
 class TabPaletteModal extends Modal {
 	constructor(app, plugin) {
