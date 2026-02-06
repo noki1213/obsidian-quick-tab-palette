@@ -42,10 +42,6 @@ class TabPaletteModal extends Modal {
 
 		// IME入力中かどうかを追跡
 		this.isComposing = false;
-
-		// モーダルを開いた時点のアクティブなリーフを保存
-		// これにより、ファイルを開く際に元のタブで開くことができる
-		this.originalActiveLeaf = this.app.workspace.activeLeaf;
 	}
 
 	getEnabledSections() {
@@ -59,7 +55,7 @@ class TabPaletteModal extends Modal {
 
 	async onOpen() {
 		const { contentEl, modalEl } = this;
-
+		
 		// モーダル全体のサイズ制御用クラスを追加
 		modalEl.addClass('mod-tab-palette');
 		contentEl.addClass('tab-palette-modal');
@@ -71,7 +67,7 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getTabs();
 		this.bookmarks = this.getBookmarksList();
 		this.dailyNotes = this.getDailyNotes();
-
+		
 		// 初期状態（全件表示）
 		this.filteredTabs = this.tabs;
 		this.filteredBookmarks = this.bookmarks;
@@ -84,7 +80,7 @@ class TabPaletteModal extends Modal {
 		if (this.plugin.settings.enableSearch) {
 			const searchColumn = columnsEl.createDiv('tab-palette-column');
 			searchColumn.createEl('h3', { text: 'Vault Search' });
-
+			
 			// 検索ボックスを左カラム内に配置
 			const searchContainer = searchColumn.createDiv('tab-palette-search-container');
 			this.searchInput = searchContainer.createEl('input', {
@@ -92,7 +88,7 @@ class TabPaletteModal extends Modal {
 				cls: 'tab-palette-search-input',
 				placeholder: 'Search vault...'
 			});
-
+			
 			const searchList = searchColumn.createDiv('tab-palette-search-list');
 
 			// イベントリスナー設定（検索有効時のみ）
@@ -123,7 +119,7 @@ class TabPaletteModal extends Modal {
 				}
 			});
 		}
-
+		
 		// --- 中央カラム：Open Tabs ---
 		let tabList = null;
 		if (this.plugin.settings.enableTabs) {
@@ -131,17 +127,17 @@ class TabPaletteModal extends Modal {
 			tabsColumn.createEl('h3', { text: 'Tabs' });
 			tabList = tabsColumn.createDiv('tab-palette-list');
 		}
-
+		
 		// --- 右カラム：Bookmarks & Daily Notes ---
 		// ブックマークかデイリーノートのどちらかが有効ならカラムを作る
 		if (this.plugin.settings.enableBookmarks || this.plugin.settings.enableDailyNotes) {
 			const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
-
+			
 			if (this.plugin.settings.enableBookmarks) {
 				bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
 				const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
 			}
-
+			
 			// Daily Notes セクション
 			if (this.plugin.settings.enableDailyNotes) {
 				// ブックマークも有効なら区切り線を入れる
@@ -185,10 +181,10 @@ class TabPaletteModal extends Modal {
 			this.moveSelection(1);
 			return false;
 		});
-
+		
 		// 左右キーでセクション移動
 		this.scope.register([], 'ArrowLeft', (e) => {
-			if (this.searchInput && document.activeElement === this.searchInput) return;
+			if (this.searchInput && document.activeElement === this.searchInput) return; 
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
@@ -200,12 +196,12 @@ class TabPaletteModal extends Modal {
 				// カーソルが末尾にあるかチェック
 				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
 				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
-
+				
 				// 末尾なら次のセクションへ移動するためにフォーカスを外す
 				this.searchInput.blur();
 				this.modalEl.focus();
 			}
-
+			
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
@@ -248,7 +244,7 @@ class TabPaletteModal extends Modal {
 				this.searchInput.blur();
 			}
 			this.modalEl.focus();
-
+			
 			// 現在のアクティブなカラムが見えるようにスクロール調整
 			// tabsColumnは存在しない場合もあるので、汎用的に処理
 			const container = this.contentEl.querySelector('.tab-palette-columns');
@@ -259,49 +255,49 @@ class TabPaletteModal extends Modal {
 			}
 		}, 10);
 	}
-
+	
 	// 検索実行
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
-
+		
 		// 1. Tabs フィルタリング -> しない（要望：検索結果は反映しないでほしい）
 		this.filteredTabs = this.tabs;
-
+		
 		// 2. Bookmarks フィルタリング -> しない
 		this.filteredBookmarks = this.bookmarks;
-
+		
 		// 3. Search Results (Vault全体)
 		if (!this.searchQuery) {
-			this.searchResults = [];
+			this.searchResults = []; 
 		} else {
 			this.searchResults = this.vaultFiles
 				.filter(file => this.matchFile(file, this.searchQuery))
 				.slice(0, 50);
 		}
-
+		
 		// インデックスのリセットと補正
 		this.selectedTabIndex = Math.min(this.selectedTabIndex, Math.max(0, this.filteredTabs.length - 1));
 		this.selectedBookmarkIndex = Math.min(this.selectedBookmarkIndex, Math.max(0, this.filteredBookmarks.length - 1));
 		this.selectedSearchIndex = 0;
 	}
-
+	
 	// ファイルマッチングロジック
 	matchFile(file, query) {
 		if (!query) return true;
 		if (!file) return false;
-
+		
 		// ファイル名
 		if (file.name.toLowerCase().includes(query)) return true;
-
+		
 		// パス
 		if (file.path.toLowerCase().includes(query)) return true;
-
+		
 		// タグ (キャッシュから取得)
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (cache && cache.tags) {
 			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
 		}
-
+		
 		return false;
 	}
 
@@ -311,12 +307,12 @@ class TabPaletteModal extends Modal {
 		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
 		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
 		const dailyNoteContainer = this.contentEl.querySelector('.tab-palette-daily-note-list');
-
+		
 		if (searchContainer) this.renderSearchResults(searchContainer);
 		if (tabContainer) this.renderTabs(tabContainer);
 		if (bookmarkContainer) this.renderBookmarks(bookmarkContainer);
 		if (dailyNoteContainer) this.renderDailyNotes(dailyNoteContainer);
-
+		
 		this.scrollToSelected();
 	}
 
@@ -326,10 +322,10 @@ class TabPaletteModal extends Modal {
 		if (sections.length === 0) return;
 
 		let currentIndex = sections.indexOf(this.activeSection);
-
+		
 		// 現在のセクションが無効化されている場合など、見つからない場合は0番目へ
 		if (currentIndex === -1) currentIndex = 0;
-
+		
 		if (direction === 'right') {
 			currentIndex++;
 		} else if (direction === 'left') {
@@ -337,13 +333,13 @@ class TabPaletteModal extends Modal {
 		} else if (typeof direction === 'string' && sections.includes(direction)) {
 			currentIndex = sections.indexOf(direction);
 		}
-
+		
 		// 範囲制限
 		if (currentIndex < 0) currentIndex = 0;
 		if (currentIndex >= sections.length) currentIndex = sections.length - 1;
-
+		
 		const nextSection = sections[currentIndex];
-
+		
 		if (this.activeSection !== nextSection) {
 			this.activeSection = nextSection;
 
@@ -359,7 +355,7 @@ class TabPaletteModal extends Modal {
 			// カラムのインデックスを計算する必要がある
 			// 物理的なカラムの並び順は、search, tabs, bookmarks(dailyNotes含む) の順
 			// しかし sections 配列には dailyNotes も独立して入っているため、単純なインデックス対応ではない
-
+			
 			// ターゲットとなる物理カラムを探す
 			let targetColumnIndex = -1;
 			if (nextSection === 'search') targetColumnIndex = 0; // 常に左
@@ -374,7 +370,7 @@ class TabPaletteModal extends Modal {
 				if (this.plugin.settings.enableTabs) idx++;
 				targetColumnIndex = idx;
 			}
-
+			
 			if (container && targetColumnIndex >= 0 && targetColumnIndex < container.children.length) {
 				const targetColumn = container.children[targetColumnIndex];
 				if (targetColumn) {
@@ -426,7 +422,7 @@ class TabPaletteModal extends Modal {
 				}
 			}
 		});
-
+		
 		if (this.plugin.settings.sortOrder === 'recency') {
 			tabs.sort((a, b) => (b.leaf.activeTime || 0) - (a.leaf.activeTime || 0));
 		}
@@ -469,7 +465,7 @@ class TabPaletteModal extends Modal {
 
 		return tabs;
 	}
-
+	
 	// 除外フォルダをフィルタリングしてタブを取得 (今回は使用しない、performSearchで実施)
 	getFilteredTabs() {
 		return this.getTabs();
@@ -509,7 +505,7 @@ class TabPaletteModal extends Modal {
 			});
 		});
 	}
-
+	
 	// ブックマークを表示
 	renderBookmarks(container) {
 		container.empty();
@@ -521,7 +517,7 @@ class TabPaletteModal extends Modal {
 
 		this.filteredBookmarks.forEach((bookmark, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
-
+			
 			if (this.activeSection === 'bookmarks' && index === this.selectedBookmarkIndex) {
 				itemEl.addClass('is-selected');
 			}
@@ -539,20 +535,20 @@ class TabPaletteModal extends Modal {
 	// 検索結果を表示
 	renderSearchResults(container) {
 		container.empty();
-
+		
 		if (this.searchResults.length === 0) {
 			const msg = this.searchQuery ? 'No results found' : 'Type to search...';
 			container.createDiv({ text: msg, cls: 'tab-palette-empty-message' });
 			return;
 		}
-
+		
 		this.searchResults.forEach((file, index) => {
 			const itemEl = container.createDiv('tab-palette-search-item');
-
+			
 			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
 				itemEl.addClass('is-selected');
 			}
-
+			
 			// 共通レンダリング用にオブジェクト整形
 			const itemData = {
 				file: file,
@@ -561,9 +557,9 @@ class TabPaletteModal extends Modal {
 				isPinned: false, // 検索結果にはピン情報は持たせない（必要なら取得可）
 				isBookmarked: this.isFileBookmarked(file.path)
 			};
-
+			
 			this.renderEntryContent(itemEl, itemData);
-
+			
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'search';
 				this.selectedSearchIndex = index;
@@ -612,7 +608,7 @@ class TabPaletteModal extends Modal {
 			const rightEl = entryEl.createDiv('tab-palette-right');
 			const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
 			setIcon(folderIcon, 'folder');
-
+			
 			const pathEl = rightEl.createSpan('tab-palette-path');
 			const pathParts = item.path.split('/');
 			pathParts.pop();
@@ -629,11 +625,11 @@ class TabPaletteModal extends Modal {
 			if (container) this.renderTabs(container);
 		} else if (this.activeSection === 'bookmarks') {
 			// bookmarksの一番下でArrowDownを押したらdailyNotesへ移動（両方有効な場合のみ）
-			if (direction > 0 &&
-				this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 &&
-				this.plugin.settings.enableDailyNotes &&
+			if (direction > 0 && 
+				this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 && 
+				this.plugin.settings.enableDailyNotes && 
 				this.dailyNotes.length > 0) {
-
+				
 				this.activeSection = 'dailyNotes';
 				this.selectedDailyNoteIndex = 0;
 				this.renderAll();
@@ -648,11 +644,11 @@ class TabPaletteModal extends Modal {
 			if (container) this.renderSearchResults(container);
 		} else if (this.activeSection === 'dailyNotes') {
 			// dailyNotesの一番上でArrowUpを押したらbookmarksへ戻る（bookmarksが有効な場合のみ）
-			if (direction < 0 &&
-				this.selectedDailyNoteIndex === 0 &&
-				this.plugin.settings.enableBookmarks &&
+			if (direction < 0 && 
+				this.selectedDailyNoteIndex === 0 && 
+				this.plugin.settings.enableBookmarks && 
 				this.filteredBookmarks.length > 0) {
-
+				
 				this.activeSection = 'bookmarks';
 				this.selectedBookmarkIndex = this.filteredBookmarks.length - 1;
 				this.renderAll();
@@ -662,17 +658,17 @@ class TabPaletteModal extends Modal {
 				if (container) this.renderDailyNotes(container);
 			}
 		}
-
+		
 		this.scrollToSelected();
 	}
-
+	
 	clampIndex(index, length) {
 		if (length === 0) return 0;
 		if (index < 0) return 0;
 		if (index >= length) return length - 1;
 		return index;
 	}
-
+	
 	// 選択中の項目をスクロールして表示
 	scrollToSelected() {
 		const selectedEl = this.contentEl.querySelector('.is-selected');
@@ -720,17 +716,9 @@ class TabPaletteModal extends Modal {
 			// ファイルを開く
 			// 設定を確認して、常に新しいタブで開くか判断
 			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
-
-			let targetLeaf;
-			if (openInNewTab) {
-				// 新しいタブで開く場合
-				targetLeaf = this.app.workspace.getLeaf('tab');
-			} else {
-				// 現在のタブで開く場合、モーダルを開いた時点のアクティブリーフを使用
-				targetLeaf = this.originalActiveLeaf || this.app.workspace.getLeaf(false);
-			}
-
-			targetLeaf.openFile(fileToOpen);
+			
+			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
+			leaf.openFile(fileToOpen);
 			this.close();
 		} else {
 			// 何も選択されていない場合、何もしないか閉じる
@@ -741,10 +729,10 @@ class TabPaletteModal extends Modal {
 	// 選択中のタブを閉じる (タブセクションのみ)
 	closeSelectedTab() {
 		if (this.activeSection !== 'tabs') return;
-
+		
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab || !tab.file) return;
-
+		
 		// Recently Closed に追加（既に閉じられているタブでなければ）
 		if (tab.leaf) {
 			const closedTabInfo = {
@@ -753,23 +741,23 @@ class TabPaletteModal extends Modal {
 				basename: tab.name,
 				extension: tab.file.extension
 			};
-
+			
 			let updatedHistory = [...(this.plugin.settings.recentlyClosed || [])];
 			// 履歴内の重複を削除して先頭に持ってくる
 			updatedHistory = updatedHistory.filter(h => h.path !== closedTabInfo.path);
 			updatedHistory.unshift(closedTabInfo);
-
+			
 			// 最大5件に制限
 			if (updatedHistory.length > 5) {
 				updatedHistory = updatedHistory.slice(0, 5);
 			}
-
+			
 			this.plugin.settings.recentlyClosed = updatedHistory;
 			this.plugin.saveSettings();
 
 			tab.leaf.detach();
 		}
-
+		
 		// データ更新
 		this.tabs = this.getTabs();
 		this.performSearch(this.searchQuery); // 再フィルタリング
@@ -779,10 +767,10 @@ class TabPaletteModal extends Modal {
 	// 選択中のタブをピン/アンピン
 	pinSelectedTab() {
 		if (this.activeSection !== 'tabs') return;
-
+		
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab || !tab.leaf) return;
-
+		
 		tab.leaf.setPinned(!tab.isPinned);
 		tab.isPinned = !tab.isPinned; // ローカル更新
 
@@ -892,7 +880,7 @@ class TabPaletteModal extends Modal {
 
 		return bookmarks;
 	}
-
+	
 	// デイリーノートを取得
 	getDailyNotes() {
 		if (!this.plugin.settings.enableDailyNotes) {
@@ -902,23 +890,23 @@ class TabPaletteModal extends Modal {
 		const dailyNotes = [];
 		const format = this.plugin.settings.dailyNoteFormat || 'YYYY-MM-DD (ddd)';
 		const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
-
+		
 		// moment.js を require （Obsidian に含まれている）
 		const moment = window.moment;
-
+		
 		const today = moment();
 		const dates = [
 			{ label: 'Yesterday', date: today.clone().subtract(1, 'day') },
 			{ label: 'Today', date: today.clone() },
 			{ label: 'Tomorrow', date: today.clone().add(1, 'day') }
 		];
-
+		
 		dates.forEach(({ label, date }) => {
 			const filename = date.format(format) + '.md';
 			const path = folder ? folder + '/' + filename : filename;
-
+			
 			const file = this.app.vault.getAbstractFileByPath(path);
-
+			
 			// ファイルが存在しなくても配列に追加（exists フラグで管理）
 			dailyNotes.push({
 				file: file,
@@ -930,44 +918,44 @@ class TabPaletteModal extends Modal {
 				momentDate: date // 作成時に使用
 			});
 		});
-
+		
 		return dailyNotes;
 	}
 
 	// デイリーノートをレンダリング
 	renderDailyNotes(container) {
 		container.empty();
-
+		
 		if (this.dailyNotes.length === 0) {
 			container.createDiv({ text: 'No daily notes', cls: 'tab-palette-empty-message' });
 			return;
 		}
-
+		
 		this.dailyNotes.forEach((dailyNote, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
-
+			
 			// 存在しない場合はグレー表示
 			if (!dailyNote.exists) {
 				itemEl.addClass('daily-note-not-exists');
 			}
-
+			
 			if (this.activeSection === 'dailyNotes' && index === this.selectedDailyNoteIndex) {
 				itemEl.addClass('is-selected');
 			}
-
+			
 			// ファイル名で表示、ラベルは右側に
 			const entryEl = itemEl.createDiv('tab-palette-entry');
 			const leftEl = entryEl.createDiv('tab-palette-left');
-
+			
 			// ファイル名を表示
 			const nameText = leftEl.createSpan('tab-palette-name-text');
 			nameText.setText(dailyNote.name);
-
+			
 			// 右側にラベル（Today/Yesterday/Tomorrow）を表示
 			const rightEl = entryEl.createDiv('tab-palette-right');
 			const labelEl = rightEl.createSpan('tab-palette-daily-note-label');
 			labelEl.setText(dailyNote.label);
-
+			
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'dailyNotes';
 				this.selectedDailyNoteIndex = index;
@@ -975,12 +963,12 @@ class TabPaletteModal extends Modal {
 			});
 		});
 	}
-
+	
 	// デイリーノート作成
 	async createDailyNote(dailyNote) {
 		const confirmed = confirm(`デイリーノート「${dailyNote.name}」を作成しますか？`);
 		if (!confirmed) return;
-
+		
 		try {
 			// テンプレートパスを取得（設定から）
 			const dailyNotesPlugin = this.app.internalPlugins?.plugins?.['daily-notes'];
@@ -988,7 +976,7 @@ class TabPaletteModal extends Modal {
 			if (dailyNotesPlugin && dailyNotesPlugin.instance) {
 				templatePath = dailyNotesPlugin.instance.options?.template || '';
 			}
-
+			
 			// ファイル作成
 			let content = '';
 			if (templatePath) {
@@ -997,7 +985,7 @@ class TabPaletteModal extends Modal {
 					content = await this.app.vault.read(templateFile);
 				}
 			}
-
+			
 			// フォルダが存在しない場合は作成
 			const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 			if (folder) {
@@ -1006,20 +994,20 @@ class TabPaletteModal extends Modal {
 					await this.app.vault.createFolder(folder);
 				}
 			}
-
+			
 			// ファイル作成
 			const newFile = await this.app.vault.create(dailyNote.path, content);
-
+			
 			// ファイルを開く
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(newFile);
-
+			
 			this.close();
 		} catch (error) {
 			new Notice(`デイリーノートの作成に失敗しました: ${error.message}`);
 		}
 	}
-
+	
 	// 後方互換性のため残す（使わない）
 	getBookmarks() { return this.getBookmarksList(); }
 
@@ -1184,10 +1172,10 @@ class TabPaletteSettingTab extends PluginSettingTab {
 class TabPalettePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
-
+		
 		// 閉じたタブ検知用の状態初期化
 		this.lastOpenTabs = this.getOpenTabsInfo();
-
+		
 		// レイアウト変更を監視して閉じたタブを検知
 		this.registerEvent(
 			this.app.workspace.on('layout-change', () => {
@@ -1250,15 +1238,15 @@ class TabPalettePlugin extends Plugin {
 	// 閉じたタブを検知して履歴に保存
 	detectClosedTabs() {
 		const currentTabs = this.getOpenTabsInfo();
-
+		
 		// 以前あって今ないものを探す
-		const closedTabs = this.lastOpenTabs.filter(lastTab =>
+		const closedTabs = this.lastOpenTabs.filter(lastTab => 
 			!currentTabs.some(currTab => currTab.path === lastTab.path)
 		);
 
 		if (closedTabs.length > 0) {
 			let updatedHistory = [...(this.settings.recentlyClosed || [])];
-
+			
 			// 新しい閉じたタブを先頭に追加
 			closedTabs.forEach(tab => {
 				// 履歴内の重複を削除して先頭に持ってくる
