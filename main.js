@@ -42,6 +42,10 @@ class TabPaletteModal extends Modal {
 
 		// Track whether IME composition is in progress
 		this.isComposing = false;
+
+		// Save the active leaf at the moment the modal was opened
+		// This lets the file be opened in the original tab
+		this.originalActiveLeaf = this.app.workspace.activeLeaf;
 	}
 
 	getEnabledSections() {
@@ -55,7 +59,7 @@ class TabPaletteModal extends Modal {
 
 	async onOpen() {
 		const { contentEl, modalEl } = this;
-		
+
 		// Add the class that controls the overall modal size
 		modalEl.addClass('mod-tab-palette');
 		contentEl.addClass('tab-palette-modal');
@@ -67,7 +71,7 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getTabs();
 		this.bookmarks = this.getBookmarksList();
 		this.dailyNotes = this.getDailyNotes();
-		
+
 		// Initial state (show all)
 		this.filteredTabs = this.tabs;
 		this.filteredBookmarks = this.bookmarks;
@@ -80,7 +84,7 @@ class TabPaletteModal extends Modal {
 		if (this.plugin.settings.enableSearch) {
 			const searchColumn = columnsEl.createDiv('tab-palette-column');
 			searchColumn.createEl('h3', { text: 'Vault Search' });
-			
+
 			// Place the search box inside the left column
 			const searchContainer = searchColumn.createDiv('tab-palette-search-container');
 			this.searchInput = searchContainer.createEl('input', {
@@ -88,7 +92,7 @@ class TabPaletteModal extends Modal {
 				cls: 'tab-palette-search-input',
 				placeholder: 'Search vault...'
 			});
-			
+
 			const searchList = searchColumn.createDiv('tab-palette-search-list');
 
 			// Set up event listeners (only when search is enabled)
@@ -119,7 +123,7 @@ class TabPaletteModal extends Modal {
 				}
 			});
 		}
-		
+
 		// --- Center column: Open Tabs ---
 		let tabList = null;
 		if (this.plugin.settings.enableTabs) {
@@ -127,17 +131,17 @@ class TabPaletteModal extends Modal {
 			tabsColumn.createEl('h3', { text: 'Tabs' });
 			tabList = tabsColumn.createDiv('tab-palette-list');
 		}
-		
+
 		// --- Right column: Bookmarks & Daily Notes ---
 		// Create the column if either bookmarks or daily notes is enabled
 		if (this.plugin.settings.enableBookmarks || this.plugin.settings.enableDailyNotes) {
 			const bookmarksColumn = columnsEl.createDiv('tab-palette-column');
-			
+
 			if (this.plugin.settings.enableBookmarks) {
 				bookmarksColumn.createEl('h3', { text: 'Bookmarks' });
 				const bookmarkList = bookmarksColumn.createDiv('tab-palette-bookmark-list');
 			}
-			
+
 			// Daily Notes section
 			if (this.plugin.settings.enableDailyNotes) {
 				// Add a divider if bookmarks is also enabled
@@ -181,10 +185,10 @@ class TabPaletteModal extends Modal {
 			this.moveSelection(1);
 			return false;
 		});
-		
+
 		// Move between sections with the left/right keys
 		this.scope.register([], 'ArrowLeft', (e) => {
-			if (this.searchInput && document.activeElement === this.searchInput) return; 
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
@@ -196,12 +200,12 @@ class TabPaletteModal extends Modal {
 				// Check whether the cursor is at the end
 				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
 				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
-				
+
 				// Blur focus to move to the next section if we're at the end
 				this.searchInput.blur();
 				this.modalEl.focus();
 			}
-			
+
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
@@ -244,7 +248,7 @@ class TabPaletteModal extends Modal {
 				this.searchInput.blur();
 			}
 			this.modalEl.focus();
-			
+
 			// Adjust scroll so the current active column is visible
 			// Handle this generically since tabsColumn may not exist
 			const container = this.contentEl.querySelector('.tab-palette-columns');
@@ -255,49 +259,49 @@ class TabPaletteModal extends Modal {
 			}
 		}, 10);
 	}
-	
+
 	// Run the search
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
-		
+
 		// 1. Filter tabs -> skip it (search results shouldn't be affected by this)
 		this.filteredTabs = this.tabs;
-		
+
 		// 2. Filter bookmarks -> skip it
 		this.filteredBookmarks = this.bookmarks;
-		
+
 		// 3. Search results (across the whole vault)
 		if (!this.searchQuery) {
-			this.searchResults = []; 
+			this.searchResults = [];
 		} else {
 			this.searchResults = this.vaultFiles
 				.filter(file => this.matchFile(file, this.searchQuery))
 				.slice(0, 50);
 		}
-		
+
 		// Reset and correct the index
 		this.selectedTabIndex = Math.min(this.selectedTabIndex, Math.max(0, this.filteredTabs.length - 1));
 		this.selectedBookmarkIndex = Math.min(this.selectedBookmarkIndex, Math.max(0, this.filteredBookmarks.length - 1));
 		this.selectedSearchIndex = 0;
 	}
-	
+
 	// File-matching logic
 	matchFile(file, query) {
 		if (!query) return true;
 		if (!file) return false;
-		
+
 		// File name
 		if (file.name.toLowerCase().includes(query)) return true;
-		
+
 		// Path
 		if (file.path.toLowerCase().includes(query)) return true;
-		
+
 		// Tags (retrieved from the cache)
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (cache && cache.tags) {
 			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
 		}
-		
+
 		return false;
 	}
 
@@ -307,12 +311,12 @@ class TabPaletteModal extends Modal {
 		const tabContainer = this.contentEl.querySelector('.tab-palette-list');
 		const bookmarkContainer = this.contentEl.querySelector('.tab-palette-bookmark-list');
 		const dailyNoteContainer = this.contentEl.querySelector('.tab-palette-daily-note-list');
-		
+
 		if (searchContainer) this.renderSearchResults(searchContainer);
 		if (tabContainer) this.renderTabs(tabContainer);
 		if (bookmarkContainer) this.renderBookmarks(bookmarkContainer);
 		if (dailyNoteContainer) this.renderDailyNotes(dailyNoteContainer);
-		
+
 		this.scrollToSelected();
 	}
 
@@ -322,10 +326,10 @@ class TabPaletteModal extends Modal {
 		if (sections.length === 0) return;
 
 		let currentIndex = sections.indexOf(this.activeSection);
-		
+
 		// Fall back to index 0 when nothing is found, e.g. if the current section is disabled
 		if (currentIndex === -1) currentIndex = 0;
-		
+
 		if (direction === 'right') {
 			currentIndex++;
 		} else if (direction === 'left') {
@@ -333,13 +337,13 @@ class TabPaletteModal extends Modal {
 		} else if (typeof direction === 'string' && sections.includes(direction)) {
 			currentIndex = sections.indexOf(direction);
 		}
-		
+
 		// Range limit
 		if (currentIndex < 0) currentIndex = 0;
 		if (currentIndex >= sections.length) currentIndex = sections.length - 1;
-		
+
 		const nextSection = sections[currentIndex];
-		
+
 		if (this.activeSection !== nextSection) {
 			this.activeSection = nextSection;
 
@@ -355,7 +359,7 @@ class TabPaletteModal extends Modal {
 			// Need to compute the column's index
 			// The physical column order is: search, tabs, bookmarks (including dailyNotes)
 			// However, since dailyNotes is also listed separately in the sections array, the index mapping isn't a simple one-to-one
-			
+
 			// Find the target physical column
 			let targetColumnIndex = -1;
 			if (nextSection === 'search') targetColumnIndex = 0; // 常に左
@@ -370,7 +374,7 @@ class TabPaletteModal extends Modal {
 				if (this.plugin.settings.enableTabs) idx++;
 				targetColumnIndex = idx;
 			}
-			
+
 			if (container && targetColumnIndex >= 0 && targetColumnIndex < container.children.length) {
 				const targetColumn = container.children[targetColumnIndex];
 				if (targetColumn) {
@@ -422,7 +426,7 @@ class TabPaletteModal extends Modal {
 				}
 			}
 		});
-		
+
 		if (this.plugin.settings.sortOrder === 'recency') {
 			tabs.sort((a, b) => (b.leaf.activeTime || 0) - (a.leaf.activeTime || 0));
 		}
@@ -465,7 +469,7 @@ class TabPaletteModal extends Modal {
 
 		return tabs;
 	}
-	
+
 	// Get tabs after filtering out excluded folders (unused here, handled in performSearch instead)
 	getFilteredTabs() {
 		return this.getTabs();
@@ -505,7 +509,7 @@ class TabPaletteModal extends Modal {
 			});
 		});
 	}
-	
+
 	// Show the bookmarks
 	renderBookmarks(container) {
 		container.empty();
@@ -517,7 +521,7 @@ class TabPaletteModal extends Modal {
 
 		this.filteredBookmarks.forEach((bookmark, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
-			
+
 			if (this.activeSection === 'bookmarks' && index === this.selectedBookmarkIndex) {
 				itemEl.addClass('is-selected');
 			}
@@ -535,20 +539,20 @@ class TabPaletteModal extends Modal {
 	// Show the search results
 	renderSearchResults(container) {
 		container.empty();
-		
+
 		if (this.searchResults.length === 0) {
 			const msg = this.searchQuery ? 'No results found' : 'Type to search...';
 			container.createDiv({ text: msg, cls: 'tab-palette-empty-message' });
 			return;
 		}
-		
+
 		this.searchResults.forEach((file, index) => {
 			const itemEl = container.createDiv('tab-palette-search-item');
-			
+
 			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
 				itemEl.addClass('is-selected');
 			}
-			
+
 			// Shape the object for shared rendering
 			const itemData = {
 				file: file,
@@ -557,9 +561,9 @@ class TabPaletteModal extends Modal {
 				isPinned: false, // 検索結果にはピン情報は持たせない（必要なら取得可）
 				isBookmarked: this.isFileBookmarked(file.path)
 			};
-			
+
 			this.renderEntryContent(itemEl, itemData);
-			
+
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'search';
 				this.selectedSearchIndex = index;
@@ -608,7 +612,7 @@ class TabPaletteModal extends Modal {
 			const rightEl = entryEl.createDiv('tab-palette-right');
 			const folderIcon = rightEl.createSpan('tab-palette-folder-icon');
 			setIcon(folderIcon, 'folder');
-			
+
 			const pathEl = rightEl.createSpan('tab-palette-path');
 			const pathParts = item.path.split('/');
 			pathParts.pop();
@@ -625,11 +629,11 @@ class TabPaletteModal extends Modal {
 			if (container) this.renderTabs(container);
 		} else if (this.activeSection === 'bookmarks') {
 			// Pressing ArrowDown at the bottom of bookmarks moves focus to dailyNotes (only when both are enabled)
-			if (direction > 0 && 
-				this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 && 
-				this.plugin.settings.enableDailyNotes && 
+			if (direction > 0 &&
+				this.selectedBookmarkIndex === this.filteredBookmarks.length - 1 &&
+				this.plugin.settings.enableDailyNotes &&
 				this.dailyNotes.length > 0) {
-				
+
 				this.activeSection = 'dailyNotes';
 				this.selectedDailyNoteIndex = 0;
 				this.renderAll();
@@ -644,11 +648,11 @@ class TabPaletteModal extends Modal {
 			if (container) this.renderSearchResults(container);
 		} else if (this.activeSection === 'dailyNotes') {
 			// Pressing ArrowUp at the top of dailyNotes moves focus back to bookmarks (only when bookmarks is enabled)
-			if (direction < 0 && 
-				this.selectedDailyNoteIndex === 0 && 
-				this.plugin.settings.enableBookmarks && 
+			if (direction < 0 &&
+				this.selectedDailyNoteIndex === 0 &&
+				this.plugin.settings.enableBookmarks &&
 				this.filteredBookmarks.length > 0) {
-				
+
 				this.activeSection = 'bookmarks';
 				this.selectedBookmarkIndex = this.filteredBookmarks.length - 1;
 				this.renderAll();
@@ -658,17 +662,17 @@ class TabPaletteModal extends Modal {
 				if (container) this.renderDailyNotes(container);
 			}
 		}
-		
+
 		this.scrollToSelected();
 	}
-	
+
 	clampIndex(index, length) {
 		if (length === 0) return 0;
 		if (index < 0) return 0;
 		if (index >= length) return length - 1;
 		return index;
 	}
-	
+
 	// Scroll to show the currently selected item
 	scrollToSelected() {
 		const selectedEl = this.contentEl.querySelector('.is-selected');
@@ -716,9 +720,17 @@ class TabPaletteModal extends Modal {
 			// Open the file
 			// Check the settings to decide whether to always open in a new tab
 			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
-			
-			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
-			leaf.openFile(fileToOpen);
+
+			let targetLeaf;
+			if (openInNewTab) {
+				// When opening in a new tab
+				targetLeaf = this.app.workspace.getLeaf('tab');
+			} else {
+				// When opening in the current tab, use the active leaf from when the modal was opened
+				targetLeaf = this.originalActiveLeaf || this.app.workspace.getLeaf(false);
+			}
+
+			targetLeaf.openFile(fileToOpen);
 			this.close();
 		} else {
 			// Do nothing, or close, if nothing is selected
@@ -729,10 +741,10 @@ class TabPaletteModal extends Modal {
 	// Close the currently selected tab (tab section only)
 	closeSelectedTab() {
 		if (this.activeSection !== 'tabs') return;
-		
+
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab || !tab.file) return;
-		
+
 		// Add to Recently Closed (unless the tab is already closed)
 		if (tab.leaf) {
 			const closedTabInfo = {
@@ -741,23 +753,23 @@ class TabPaletteModal extends Modal {
 				basename: tab.name,
 				extension: tab.file.extension
 			};
-			
+
 			let updatedHistory = [...(this.plugin.settings.recentlyClosed || [])];
 			// Remove duplicates from history and move the entry to the front
 			updatedHistory = updatedHistory.filter(h => h.path !== closedTabInfo.path);
 			updatedHistory.unshift(closedTabInfo);
-			
+
 			// Cap at 5 items
 			if (updatedHistory.length > 5) {
 				updatedHistory = updatedHistory.slice(0, 5);
 			}
-			
+
 			this.plugin.settings.recentlyClosed = updatedHistory;
 			this.plugin.saveSettings();
 
 			tab.leaf.detach();
 		}
-		
+
 		// Update data
 		this.tabs = this.getTabs();
 		this.performSearch(this.searchQuery); // 再フィルタリング
@@ -767,10 +779,10 @@ class TabPaletteModal extends Modal {
 	// Pin/unpin the currently selected tab
 	pinSelectedTab() {
 		if (this.activeSection !== 'tabs') return;
-		
+
 		const tab = this.filteredTabs[this.selectedTabIndex];
 		if (!tab || !tab.leaf) return;
-		
+
 		tab.leaf.setPinned(!tab.isPinned);
 		tab.isPinned = !tab.isPinned; // ローカル更新
 
@@ -880,7 +892,7 @@ class TabPaletteModal extends Modal {
 
 		return bookmarks;
 	}
-	
+
 	// Get the daily note
 	getDailyNotes() {
 		if (!this.plugin.settings.enableDailyNotes) {
@@ -890,23 +902,23 @@ class TabPaletteModal extends Modal {
 		const dailyNotes = [];
 		const format = this.plugin.settings.dailyNoteFormat || 'YYYY-MM-DD (ddd)';
 		const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
-		
+
 		// require moment.js (bundled with Obsidian)
 		const moment = window.moment;
-		
+
 		const today = moment();
 		const dates = [
 			{ label: 'Yesterday', date: today.clone().subtract(1, 'day') },
 			{ label: 'Today', date: today.clone() },
 			{ label: 'Tomorrow', date: today.clone().add(1, 'day') }
 		];
-		
+
 		dates.forEach(({ label, date }) => {
 			const filename = date.format(format) + '.md';
 			const path = folder ? folder + '/' + filename : filename;
-			
+
 			const file = this.app.vault.getAbstractFileByPath(path);
-			
+
 			// Add to the array even if the file doesn't exist (tracked via an exists flag)
 			dailyNotes.push({
 				file: file,
@@ -918,44 +930,44 @@ class TabPaletteModal extends Modal {
 				momentDate: date // 作成時に使用
 			});
 		});
-		
+
 		return dailyNotes;
 	}
 
 	// Render the daily note
 	renderDailyNotes(container) {
 		container.empty();
-		
+
 		if (this.dailyNotes.length === 0) {
 			container.createDiv({ text: 'No daily notes', cls: 'tab-palette-empty-message' });
 			return;
 		}
-		
+
 		this.dailyNotes.forEach((dailyNote, index) => {
 			const itemEl = container.createDiv('tab-palette-bookmark-item');
-			
+
 			// Gray it out if it doesn't exist
 			if (!dailyNote.exists) {
 				itemEl.addClass('daily-note-not-exists');
 			}
-			
+
 			if (this.activeSection === 'dailyNotes' && index === this.selectedDailyNoteIndex) {
 				itemEl.addClass('is-selected');
 			}
-			
+
 			// Display by file name, with the label on the right
 			const entryEl = itemEl.createDiv('tab-palette-entry');
 			const leftEl = entryEl.createDiv('tab-palette-left');
-			
+
 			// Show the file name
 			const nameText = leftEl.createSpan('tab-palette-name-text');
 			nameText.setText(dailyNote.name);
-			
+
 			// Show the label (Today/Yesterday/Tomorrow) on the right
 			const rightEl = entryEl.createDiv('tab-palette-right');
 			const labelEl = rightEl.createSpan('tab-palette-daily-note-label');
 			labelEl.setText(dailyNote.label);
-			
+
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'dailyNotes';
 				this.selectedDailyNoteIndex = index;
@@ -963,12 +975,12 @@ class TabPaletteModal extends Modal {
 			});
 		});
 	}
-	
+
 	// Create the daily note
 	async createDailyNote(dailyNote) {
 		const confirmed = confirm(`デイリーノート「${dailyNote.name}」を作成しますか？`);
 		if (!confirmed) return;
-		
+
 		try {
 			// Get the template path (from settings)
 			const dailyNotesPlugin = this.app.internalPlugins?.plugins?.['daily-notes'];
@@ -976,7 +988,7 @@ class TabPaletteModal extends Modal {
 			if (dailyNotesPlugin && dailyNotesPlugin.instance) {
 				templatePath = dailyNotesPlugin.instance.options?.template || '';
 			}
-			
+
 			// Create the file
 			let content = '';
 			if (templatePath) {
@@ -985,7 +997,7 @@ class TabPaletteModal extends Modal {
 					content = await this.app.vault.read(templateFile);
 				}
 			}
-			
+
 			// Create the folder if it doesn't exist
 			const folder = this.plugin.settings.dailyNoteFolder || '00_DailyNote';
 			if (folder) {
@@ -994,20 +1006,20 @@ class TabPaletteModal extends Modal {
 					await this.app.vault.createFolder(folder);
 				}
 			}
-			
+
 			// Create the file
 			const newFile = await this.app.vault.create(dailyNote.path, content);
-			
+
 			// Open the file
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(newFile);
-			
+
 			this.close();
 		} catch (error) {
 			new Notice(`デイリーノートの作成に失敗しました: ${error.message}`);
 		}
 	}
-	
+
 	// Kept for backward compatibility (unused)
 	getBookmarks() { return this.getBookmarksList(); }
 
@@ -1172,10 +1184,10 @@ class TabPaletteSettingTab extends PluginSettingTab {
 class TabPalettePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
-		
+
 		// Initialize state for closed-tab detection
 		this.lastOpenTabs = this.getOpenTabsInfo();
-		
+
 		// Watch for layout changes to detect closed tabs
 		this.registerEvent(
 			this.app.workspace.on('layout-change', () => {
@@ -1238,15 +1250,15 @@ class TabPalettePlugin extends Plugin {
 	// Detect closed tabs and save them to history
 	detectClosedTabs() {
 		const currentTabs = this.getOpenTabsInfo();
-		
+
 		// Find items that existed before but are gone now
-		const closedTabs = this.lastOpenTabs.filter(lastTab => 
+		const closedTabs = this.lastOpenTabs.filter(lastTab =>
 			!currentTabs.some(currTab => currTab.path === lastTab.path)
 		);
 
 		if (closedTabs.length > 0) {
 			let updatedHistory = [...(this.settings.recentlyClosed || [])];
-			
+
 			// Add the newly closed tab to the front
 			closedTabs.forEach(tab => {
 				// Remove duplicates from history and move the entry to the front
