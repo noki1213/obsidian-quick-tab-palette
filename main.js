@@ -1,4 +1,79 @@
-const { Plugin, Modal, PluginSettingTab, Setting, WorkspaceLeaf, Notice, setIcon, Workspace } = require('obsidian');
+const { Plugin, Modal, PluginSettingTab, Setting, WorkspaceLeaf, Notice, setIcon, Workspace, View, TFile, WorkspaceRoot, WorkspaceFloating, WorkspaceTabs, Platform, Keymap } = require('obsidian');
+
+// --- Helper functions for the monkey patch ---
+// A utility for safely patching Obsidian's internal handling
+// Ported from the open-tab-settings plugin
+
+// Function that patches multiple methods at once
+// target: the object being patched (e.g. Workspace.prototype)
+// patches: specified as { methodName: wrapperFunction }
+// Return value: a function that reverts the patch
+function applyPatches(target, patches) {
+	const restoreFunctions = Object.keys(patches).map(methodName =>
+		patchMethod(target, methodName, patches[methodName])
+	);
+	// Return all the revert functions together
+	if (restoreFunctions.length === 1) return restoreFunctions[0];
+	return function() {
+		restoreFunctions.forEach(restore => restore());
+	};
+}
+
+// Function that patches a single method
+// target: the object being patched
+// methodName: the name of the method being patched
+// wrapperFactory: a function that takes the original method and returns a new one
+// Return value: a function that reverts the patch
+function patchMethod(target, methodName, wrapperFactory) {
+	const original = target[methodName];
+	const hadOwn = target.hasOwnProperty(methodName);
+	// If there's no original function, build a fallback that calls up the prototype chain
+	const fallback = hadOwn ? original : function() {
+		return Object.getPrototypeOf(target)[methodName].apply(this, arguments);
+	};
+
+	let wrapper = wrapperFactory(fallback);
+
+	// Preserve the prototype chain
+	if (original) Object.setPrototypeOf(wrapper, original);
+	Object.setPrototypeOf(proxy, wrapper);
+	target[methodName] = proxy;
+
+	return restore;
+
+	// The function that actually gets called (a proxy)
+	function proxy(...args) {
+		// Run the restore logic if it has already been reverted
+		if (wrapper === fallback && target[methodName] === proxy) restore();
+		return wrapper.apply(this, args);
+	}
+
+	// Function that reverts the patch
+	function restore() {
+		if (target[methodName] === proxy) {
+			if (hadOwn) {
+				target[methodName] = fallback;
+			} else {
+				delete target[methodName];
+			}
+		}
+		if (wrapper !== fallback) {
+			wrapper = fallback;
+			Object.setPrototypeOf(proxy, original || Function);
+		}
+	}
+}
+
+// Determine whether the tab is empty (a home tab or empty view)
+function isEmptyLeaf(leaf) {
+	return ['empty', 'home-tab-view'].includes(leaf.view.getViewType());
+}
+
+// Determine whether the tab is within the main workspace
+function isInMainWorkspace(leaf) {
+	const root = leaf.getRoot();
+	return root instanceof WorkspaceRoot || root instanceof WorkspaceFloating;
+}
 
 // Default settings
 const DEFAULT_SETTINGS = {
@@ -7,6 +82,9 @@ const DEFAULT_SETTINGS = {
 	showPath: true,
 	sortOrder: 'recency', // 'recency' または 'opening-order'
 	alwaysOpenInNewTab: false,
+	deduplicateTabs: true, // 重複タブ防止：同じファイルが開いていたらそのタブに切り替える
+	newTabPlacement: 'after-active', // 新しいタブの位置：'after-active', 'after-pinned', 'beginning', 'end'
+	newTabTabGroupPlacement: 'same', // タブグループの配置：'same', 'opposite', 'first', 'last'
 	recentlyClosed: [], // 最近閉じたタブの履歴
 	enableSearch: true,
 	enableTabs: true,
@@ -1130,13 +1208,55 @@ class TabPaletteSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('常に新しいタブで開く')
-			.setDesc('ファイルを選択した際、常に新しいタブで開くように強制する')
+			.setDesc('リンクのクリックやパレットからの選択時、常に新しいタブで開く（Obsidian全体に適用）')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.alwaysOpenInNewTab)
 				.onChange(async (value) => {
 					this.plugin.settings.alwaysOpenInNewTab = value;
 					await this.plugin.saveSettings();
+					this.display(); // 関連設定の表示を更新
 				}));
+
+		// Only show the detail settings when alwaysOpenInNewTab is enabled
+		if (this.plugin.settings.alwaysOpenInNewTab) {
+			new Setting(containerEl)
+				.setName('重複タブを防止')
+				.setDesc('同じファイルがすでに開いている場合、新しいタブを作らずにそのタブに切り替える')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.deduplicateTabs)
+					.onChange(async (value) => {
+						this.plugin.settings.deduplicateTabs = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName('新しいタブの位置')
+				.setDesc('新しいタブをどこに配置するか')
+				.addDropdown(dropdown => dropdown
+					.addOption('after-active', '現在のタブの後ろ')
+					.addOption('after-pinned', 'ピン留めタブの後ろ')
+					.addOption('beginning', '先頭')
+					.addOption('end', '末尾')
+					.setValue(this.plugin.settings.newTabPlacement)
+					.onChange(async (value) => {
+						this.plugin.settings.newTabPlacement = value;
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(containerEl)
+				.setName('タブグループの配置')
+				.setDesc('画面を分割している場合、新しいタブをどのグループに開くか')
+				.addDropdown(dropdown => dropdown
+					.addOption('same', '同じタブグループ')
+					.addOption('opposite', '反対側のタブグループ')
+					.addOption('first', '最初のタブグループ')
+					.addOption('last', '最後のタブグループ')
+					.setValue(this.plugin.settings.newTabTabGroupPlacement)
+					.onChange(async (value) => {
+						this.plugin.settings.newTabTabGroupPlacement = value;
+						await this.plugin.saveSettings();
+					}));
+		}
 
 		// --- Daily note detail settings ---
 		// Show only when Daily Notes is enabled
@@ -1173,6 +1293,9 @@ class TabPalettePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 		
+		// Register the monkey patch (opens a new tab on link clicks too)
+		this.registerMonkeyPatches();
+
 		// Initialize state for closed-tab detection
 		this.lastOpenTabs = this.getOpenTabsInfo();
 		
@@ -1306,6 +1429,268 @@ class TabPalettePlugin extends Plugin {
 		} else if (leaves.length > 0) {
 			workspace.setActiveLeaf(leaves[0], { focus: true });
 		}
+	}
+
+	// --- Monkey patch: override Obsidian's internal handling so clicking a link also opens it in a new tab ---
+	registerMonkeyPatches() {
+		const plugin = this;
+
+		// Patch Workspace.prototype.getLeaf and getUnpinnedLeaf
+		this.register(applyPatches(Workspace.prototype, {
+			// getLeaf: controls the behavior when opening a tab
+			getLeaf(original) {
+				return function(navigation, ...rest) {
+					if (!plugin.settings.alwaysOpenInNewTab) {
+						return original.call(this, navigation, ...rest);
+					}
+
+					const activeView = this.getActiveViewOfType(View);
+					const activeLeaf = activeView ? activeView.leaf : undefined;
+
+					let leaf;
+					if (navigation === 'tab') {
+						// Create a new tab when a tab is explicitly specified
+						leaf = plugin.createNewLeaf(undefined, plugin.settings);
+					} else if (!navigation) {
+						// Regular click -> open in a new tab if alwaysOpenInNewTab is enabled
+						leaf = plugin.createNewLeaf(true, plugin.settings);
+					} else {
+						// Defer other cases (e.g. split) to the original logic
+						leaf = original.call(this, navigation, ...rest);
+					}
+
+					// Record info about the original tab that was opened (used for duplicate-tab prevention)
+					leaf.openTabSettings = {
+						openMode: navigation,
+						openedFrom: activeLeaf ? activeLeaf.id : undefined
+					};
+					return leaf;
+				};
+			},
+
+			// getUnpinnedLeaf: controls the behavior of fetching an unpinned tab
+			getUnpinnedLeaf(original) {
+				return function(navigation) {
+					if (plugin.settings.alwaysOpenInNewTab) {
+						return this.getLeaf('tab');
+					}
+					return plugin.getUnpinnedLeaf(navigation);
+				};
+			}
+		}));
+
+		// Patch WorkspaceLeaf.prototype.openFile (duplicate-tab prevention)
+		this.register(applyPatches(WorkspaceLeaf.prototype, {
+			openFile(original) {
+				return async function(file, openState, ...rest) {
+					// Reset openTabSettings unless it's an empty tab
+					if (!isEmptyLeaf(this)) {
+						delete this.openTabSettings;
+					}
+
+					const tabSettings = this.openTabSettings || {};
+					const openMode = tabSettings.openMode;
+					const openedFrom = tabSettings.openedFrom;
+					const settings = plugin.settings;
+
+					// Look for a tab that has this same file open
+					let matchingLeaves = plugin.findMatchingLeaves(file);
+
+					// If this tab itself already matches, just open it as-is
+					const selfMatches = matchingLeaves.includes(this);
+
+					// Defer to the original logic for cases opened outside the main workspace or other special cases
+					const isOutsideMainWorkspace = !isInMainWorkspace(this) ||
+						(isEmptyLeaf(this) && ![false, 'tab'].includes(openMode !== undefined ? openMode : 'unknown'));
+
+					let redirectLeaf;
+
+					if (settings.deduplicateTabs && !isOutsideMainWorkspace && matchingLeaves.length > 0 && !selfMatches) {
+						// Duplicate-tab prevention: move focus to the tab that already has this file open
+						// First, look within the same tab group as the original tab that was opened
+						redirectLeaf = matchingLeaves.find(l => l.id === openedFrom);
+						if (!redirectLeaf) {
+							redirectLeaf = matchingLeaves.find(l => l.parent === this.parent);
+						}
+						if (!redirectLeaf) {
+							redirectLeaf = matchingLeaves[0];
+						}
+					}
+
+					let result;
+					if (redirectLeaf) {
+						// Open the file in the redirect-target tab
+						const activeViewLeaf = plugin.app.workspace.getActiveViewOfType(View);
+						const currentActive = activeViewLeaf ? activeViewLeaf.leaf : undefined;
+						result = await original.call(redirectLeaf, file, {
+							...openState,
+							active: !!(openState && openState.active) || currentActive === this
+						}, ...rest);
+					} else {
+						// Open the file in this tab as usual
+						result = await original.call(this, file, openState, ...rest);
+					}
+
+					// Close it if an empty tab is left over
+					if (isEmptyLeaf(this) && this.parent && this.parent.children.length > 1) {
+						this.detach();
+					}
+
+					delete this.openTabSettings;
+					return result;
+				};
+			}
+		}));
+
+		// Patch Keymap.isModEvent (changes behavior for Ctrl/Cmd+click)
+		this.register(applyPatches(Keymap, {
+			isModEvent(original) {
+				return function(...args) {
+					let result = original.call(this, ...args);
+					if (result === 'tab' && plugin.settings.alwaysOpenInNewTab) {
+						// When alwaysOpenInNewTab is enabled, Ctrl/Cmd+click opens in the same tab instead
+						result = false;
+					}
+					return result;
+				};
+			}
+		}));
+	}
+
+	// Look for a tab that already has this same file open
+	findMatchingLeaves(file) {
+		const matches = [];
+		this.app.workspace.iterateAllLeaves(leaf => {
+			const state = leaf.getViewState();
+			const statePath = state && state.state ? state.state.file : undefined;
+			const isSameFile = statePath === file.path;
+
+			const viewType = leaf.view.getViewType();
+			const expectedType = this.app.viewRegistry.getTypeByExtension(file.extension);
+			const isMatchingType = expectedType === viewType;
+
+			if (isInMainWorkspace(leaf) && isSameFile && isMatchingType) {
+				matches.push(leaf);
+			}
+		});
+		return matches;
+	}
+
+	// Get all tab groups
+	getAllTabGroups(root) {
+		const groups = new Set();
+		this.app.workspace.iterateAllLeaves(leaf => {
+			if (leaf.getRoot() === root) {
+				groups.add(leaf.parent);
+			}
+		});
+		return [...groups];
+	}
+
+	// Create a new tab
+	createNewLeaf(focus, settings = {}) {
+		const workspace = this.app.workspace;
+		focus = focus !== undefined ? focus : this.app.vault.getConfig('focusNewTab');
+
+		const opts = { ...this.settings, ...settings };
+		const recentLeaf = workspace.getMostRecentLeaf();
+		if (!recentLeaf) throw new Error('No tab group found.');
+
+		let targetParent = recentLeaf.parent;
+		const currentIndex = targetParent.children.indexOf(recentLeaf);
+
+		// Reuse an empty tab if one exists
+		if (isEmptyLeaf(recentLeaf)) return recentLeaf;
+
+		let targetGroup;
+		// Decide the destination group according to the tab-group placement setting
+		if (opts.newTabTabGroupPlacement !== 'same' && !Platform.isPhone) {
+			const allGroups = this.getAllTabGroups(recentLeaf.getRoot());
+			const otherGroups = allGroups.filter(g => g !== targetParent);
+			const lastOther = otherGroups.at(-1);
+
+			if (opts.newTabTabGroupPlacement === 'opposite' && lastOther) {
+				targetGroup = lastOther;
+			} else if (opts.newTabTabGroupPlacement === 'first' && allGroups.at(0)) {
+				targetGroup = allGroups[0];
+			} else if (opts.newTabTabGroupPlacement === 'last' && allGroups.at(-1)) {
+				targetGroup = allGroups.at(-1);
+			}
+		}
+
+		if (!targetGroup) targetGroup = targetParent;
+
+		// Decide the insertion position
+		let insertIndex;
+		if (targetGroup === targetParent) {
+			if (opts.newTabPlacement === 'after-pinned') {
+				const lastPinnedIndex = targetGroup.children.findLastIndex(child => child.pinned);
+				insertIndex = lastPinnedIndex >= 0 ? lastPinnedIndex + 1 : currentIndex + 1;
+			} else if (opts.newTabPlacement === 'beginning') {
+				insertIndex = 0;
+			} else if (opts.newTabPlacement === 'end') {
+				insertIndex = targetParent.children.length;
+			} else {
+				// 'after-active' is the default
+				insertIndex = currentIndex + 1;
+			}
+		} else {
+			insertIndex = opts.newTabPlacement === 'beginning' ? 0 : targetGroup.children.length;
+		}
+
+		// Reuse an empty tab at the insertion point if one exists
+		let newLeaf;
+		const leafAtIndex = targetGroup.children[Math.min(insertIndex, targetGroup.children.length - 1)];
+		if (leafAtIndex && isEmptyLeaf(leafAtIndex)) {
+			newLeaf = leafAtIndex;
+		} else {
+			newLeaf = new WorkspaceLeaf(this.app);
+			const prevTab = targetGroup.currentTab;
+			targetGroup.insertChild(insertIndex, newLeaf);
+			// Preserve the original tab's selection state
+			if (insertIndex <= prevTab && (targetGroup !== targetParent || !focus)) {
+				targetGroup.selectTabIndex(prevTab + 1);
+			}
+		}
+
+		if (focus) workspace.setActiveLeaf(newLeaf);
+		return newLeaf;
+	}
+
+	// Get an unpinned tab
+	getUnpinnedLeaf(focus = true, settings = {}) {
+		const workspace = this.app.workspace;
+		const opts = { ...this.settings, ...settings };
+		const activeLeaf = workspace.activeLeaf;
+
+		// Use the current tab as-is if it's navigable
+		if (activeLeaf && activeLeaf.canNavigate()) return activeLeaf;
+
+		// Look for a navigable tab
+		const container = (activeLeaf && activeLeaf.getContainer()) || workspace.rootSplit;
+		let bestLeaf = null;
+
+		workspace.iterateLeaves(container, leaf => {
+			if (leaf.canNavigate()) {
+				const parent = leaf.parent;
+				if (parent) {
+					const isCurrentTab = parent.children[parent.currentTab] === leaf;
+					const isStacked = parent instanceof WorkspaceTabs && parent.isStacked;
+					if (isCurrentTab || isStacked) {
+						if (!bestLeaf || bestLeaf.activeTime < leaf.activeTime) {
+							bestLeaf = leaf;
+						}
+					}
+				}
+			}
+		});
+
+		if (bestLeaf) {
+			if (focus) workspace.setActiveLeaf(bestLeaf);
+		} else {
+			bestLeaf = this.createNewLeaf(focus, opts);
+		}
+		return bestLeaf;
 	}
 
 	async loadSettings() {
