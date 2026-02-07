@@ -401,13 +401,18 @@ class TabPaletteModal extends Modal {
 		this.filteredBookmarks = this.bookmarks;
 
 		// 3. Search Results (Vault全体)
+		// 各結果は { file, matchLine, snippet } の形式
 		if (!query.trim()) {
 			this.searchResults = [];
 		} else {
 			const parsed = this.parseSearchQuery(query);
 			this.searchResults = this.vaultFiles
 				.filter(file => this.matchFile(file, parsed))
-				.sort((a, b) => (b.stat.mtime || 0) - (a.stat.mtime || 0))
+				.map(file => {
+					const match = this.getMatchInfo(file, parsed);
+					return { file, matchLine: match.line, snippet: match.snippet };
+				})
+				.sort((a, b) => (b.file.stat.mtime || 0) - (a.file.stat.mtime || 0))
 				.slice(0, 50);
 		}
 
@@ -446,27 +451,38 @@ class TabPaletteModal extends Modal {
 		return tags;
 	}
 
-	// ファイル内容からマッチした行を取得（プレビュー表示用）
-	getMatchSnippet(file, query) {
-		const content = this.fileContentCache.get(file.path);
-		if (!content) return null;
-
-		// 元の内容（大文字小文字を保持）を行単位で検索
+	// ファイル内容からマッチした行の情報を取得（行番号 + スニペット）
+	getMatchInfo(file, parsed) {
+		const query = parsed.value;
 		const originalContent = this.fileContentCacheOriginal.get(file.path);
-		if (!originalContent) return null;
+		if (!originalContent || !query) return { line: null, snippet: null };
 
 		const lines = originalContent.split('\n');
+		// frontmatter をスキップするための処理
+		let inFrontmatter = false;
+		let frontmatterEnd = 0;
+
 		for (let i = 0; i < lines.length; i++) {
+			const trimmed = lines[i].trim();
+			if (i === 0 && trimmed === '---') {
+				inFrontmatter = true;
+				continue;
+			}
+			if (inFrontmatter) {
+				if (trimmed === '---') {
+					inFrontmatter = false;
+					frontmatterEnd = i;
+				}
+				continue;
+			}
+
 			if (lines[i].toLowerCase().includes(query)) {
-				// frontmatter の行はスキップ
-				const trimmed = lines[i].trim();
-				if (trimmed === '---' || trimmed.startsWith('tags:')) continue;
-				// マッチした行を返す（長すぎる場合は切り詰め）
 				const line = lines[i].trim();
-				return line.length > 80 ? line.substring(0, 80) + '...' : line;
+				const snippet = line.length > 80 ? line.substring(0, 80) + '...' : line;
+				return { line: i, snippet };
 			}
 		}
-		return null;
+		return { line: null, snippet: null };
 	}
 
 	// ファイルマッチングロジック
@@ -752,9 +768,7 @@ class TabPaletteModal extends Modal {
 			return;
 		}
 
-		const parsed = this.parseSearchQuery(this.searchQuery);
-
-		this.searchResults.forEach((file, index) => {
+		this.searchResults.forEach((result, index) => {
 			const itemEl = container.createDiv('tab-palette-search-item');
 
 			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
@@ -763,22 +777,19 @@ class TabPaletteModal extends Modal {
 
 			// 共通レンダリング用にオブジェクト整形
 			const itemData = {
-				file: file,
-				name: file.basename,
-				path: file.path,
+				file: result.file,
+				name: result.file.basename,
+				path: result.file.path,
 				isPinned: false,
-				isBookmarked: this.isFileBookmarked(file.path)
+				isBookmarked: this.isFileBookmarked(result.file.path)
 			};
 
 			this.renderEntryContent(itemEl, itemData);
 
-			// ファイル内容でマッチした場合、マッチ行のスニペットを表示
-			if (parsed.type === 'all' && parsed.value) {
-				const snippet = this.getMatchSnippet(file, parsed.value);
-				if (snippet) {
-					const snippetEl = itemEl.createDiv('tab-palette-snippet');
-					snippetEl.setText(snippet);
-				}
+			// マッチ行のスニペットを表示
+			if (result.snippet) {
+				const snippetEl = itemEl.createDiv('tab-palette-snippet');
+				snippetEl.setText(result.snippet);
 			}
 
 			itemEl.addEventListener('click', () => {
@@ -917,7 +928,13 @@ class TabPaletteModal extends Modal {
 			if (bookmark) fileToOpen = bookmark.file;
 		} else if (this.activeSection === 'search') {
 			const result = this.searchResults[this.selectedSearchIndex];
-			if (result) fileToOpen = result;
+			if (result) {
+				fileToOpen = result.file;
+				// マッチ行がある場合は行番号を記録（ファイルを開いた後にジャンプする）
+				if (result.matchLine !== null) {
+					this._openFileLine = result.matchLine;
+				}
+			}
 		} else if (this.activeSection === 'dailyNotes') {
 			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
 			if (dailyNote) {
@@ -937,9 +954,16 @@ class TabPaletteModal extends Modal {
 			// ファイルを開く
 			// 設定を確認して、常に新しいタブで開くか判断
 			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
-			
+			const targetLine = this._openFileLine;
+			this._openFileLine = null;
+
 			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
-			leaf.openFile(fileToOpen);
+			// マッチ行がある場合はその行にジャンプ
+			if (targetLine !== null && targetLine !== undefined) {
+				leaf.openFile(fileToOpen, { eState: { line: targetLine } });
+			} else {
+				leaf.openFile(fileToOpen);
+			}
 			this.close();
 		} else {
 			// 何も選択されていない場合、何もしないか閉じる
@@ -1017,7 +1041,7 @@ class TabPaletteModal extends Modal {
 			if (bookmark) file = bookmark.file;
 		} else if (this.activeSection === 'search') {
 			const result = this.searchResults[this.selectedSearchIndex];
-			if (result) file = result;
+			if (result) file = result.file;
 		} else if (this.activeSection === 'dailyNotes') {
 			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
 			if (dailyNote && dailyNote.exists) file = dailyNote.file;
