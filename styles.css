@@ -283,6 +283,17 @@
     color: var(--text-muted);
 }
 
+/* 検索結果のスニペット（マッチ行のプレビュー） */
+.tab-palette-snippet {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+	padding-left: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* キーバインドヘルプフッター */
 .tab-palette-help-footer {
     padding: 10px;

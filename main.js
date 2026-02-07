@@ -109,7 +109,8 @@ class TabPaletteModal extends Modal {
 
 		this.searchQuery = '';
 		this.vaultFiles = []; // 全ファイルキャッシュ
-		this.fileContentCache = new Map(); // ファイル内容キャッシュ（パス → 中身のテキスト）
+		this.fileContentCache = new Map(); // ファイル内容キャッシュ（パス → 小文字化した中身）
+		this.fileContentCacheOriginal = new Map(); // 元の内容（大文字小文字を保持）
 		this.searchDebounceTimer = null; // デバウンス用タイマー
 
 		this.filteredTabs = [];
@@ -358,6 +359,7 @@ class TabPaletteModal extends Modal {
 				try {
 					const content = await this.app.vault.cachedRead(file);
 					this.fileContentCache.set(file.path, content.toLowerCase());
+					this.fileContentCacheOriginal.set(file.path, content);
 				} catch (e) {
 					// 読めないファイルはスキップ
 				}
@@ -412,6 +414,58 @@ class TabPaletteModal extends Modal {
 		this.selectedSearchIndex = 0;
 	}
 
+	// ファイルの全タグを取得（本文中のインラインタグ + frontmatter のタグ両方）
+	getFileTags(file) {
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (!cache) return [];
+
+		const tags = [];
+
+		// 本文中のインラインタグ（#tag 形式）
+		if (cache.tags) {
+			cache.tags.forEach(t => tags.push(t.tag.toLowerCase()));
+		}
+
+		// frontmatter のタグ
+		if (cache.frontmatter && cache.frontmatter.tags) {
+			const fmTags = cache.frontmatter.tags;
+			if (Array.isArray(fmTags)) {
+				fmTags.forEach(t => {
+					const tag = String(t).toLowerCase();
+					tags.push(tag.startsWith('#') ? tag : '#' + tag);
+				});
+			} else if (typeof fmTags === 'string') {
+				const tag = fmTags.toLowerCase();
+				tags.push(tag.startsWith('#') ? tag : '#' + tag);
+			}
+		}
+
+		return tags;
+	}
+
+	// ファイル内容からマッチした行を取得（プレビュー表示用）
+	getMatchSnippet(file, query) {
+		const content = this.fileContentCache.get(file.path);
+		if (!content) return null;
+
+		// 元の内容（大文字小文字を保持）を行単位で検索
+		const originalContent = this.fileContentCacheOriginal.get(file.path);
+		if (!originalContent) return null;
+
+		const lines = originalContent.split('\n');
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].toLowerCase().includes(query)) {
+				// frontmatter の行はスキップ
+				const trimmed = lines[i].trim();
+				if (trimmed === '---' || trimmed.startsWith('tags:')) continue;
+				// マッチした行を返す（長すぎる場合は切り詰め）
+				const line = lines[i].trim();
+				return line.length > 80 ? line.substring(0, 80) + '...' : line;
+			}
+		}
+		return null;
+	}
+
 	// ファイルマッチングロジック
 	matchFile(file, parsed) {
 		if (!parsed.value) return true;
@@ -430,14 +484,10 @@ class TabPaletteModal extends Modal {
 		}
 
 		if (parsed.type === 'tag') {
-			// タグだけで検索
-			const cache = this.app.metadataCache.getFileCache(file);
-			if (cache && cache.tags) {
-				// # 付きでも # なしでもマッチするようにする
-				const normalizedQuery = query.startsWith('#') ? query : '#' + query;
-				return cache.tags.some(t => t.tag.toLowerCase().includes(normalizedQuery));
-			}
-			return false;
+			// タグだけで検索（frontmatter + インラインタグ両方）
+			const tags = this.getFileTags(file);
+			const normalizedQuery = query.startsWith('#') ? query : '#' + query;
+			return tags.some(t => t.includes(normalizedQuery));
 		}
 
 		// type === 'all': 全部まとめて検索
@@ -447,11 +497,9 @@ class TabPaletteModal extends Modal {
 		// パス
 		if (file.path.toLowerCase().includes(query)) return true;
 
-		// タグ
-		const cache = this.app.metadataCache.getFileCache(file);
-		if (cache && cache.tags) {
-			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
-		}
+		// タグ（frontmatter + インラインタグ両方）
+		const tags = this.getFileTags(file);
+		if (tags.some(t => t.includes(query))) return true;
 
 		// ファイル内容
 		const content = this.fileContentCache.get(file.path);
@@ -694,31 +742,42 @@ class TabPaletteModal extends Modal {
 	// 検索結果を表示
 	renderSearchResults(container) {
 		container.empty();
-		
+
 		if (this.searchResults.length === 0) {
 			const msg = this.searchQuery ? 'No results found' : 'Type to search...';
 			container.createDiv({ text: msg, cls: 'tab-palette-empty-message' });
 			return;
 		}
-		
+
+		const parsed = this.parseSearchQuery(this.searchQuery);
+
 		this.searchResults.forEach((file, index) => {
 			const itemEl = container.createDiv('tab-palette-search-item');
-			
+
 			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
 				itemEl.addClass('is-selected');
 			}
-			
+
 			// 共通レンダリング用にオブジェクト整形
 			const itemData = {
 				file: file,
 				name: file.basename,
 				path: file.path,
-				isPinned: false, // 検索結果にはピン情報は持たせない（必要なら取得可）
+				isPinned: false,
 				isBookmarked: this.isFileBookmarked(file.path)
 			};
-			
+
 			this.renderEntryContent(itemEl, itemData);
-			
+
+			// ファイル内容でマッチした場合、マッチ行のスニペットを表示
+			if (parsed.type === 'all' && parsed.value) {
+				const snippet = this.getMatchSnippet(file, parsed.value);
+				if (snippet) {
+					const snippetEl = itemEl.createDiv('tab-palette-snippet');
+					snippetEl.setText(snippet);
+				}
+			}
+
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'search';
 				this.selectedSearchIndex = index;
