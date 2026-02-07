@@ -349,7 +349,15 @@ class TabPaletteModal extends Modal {
 			this.searchResults = []; 
 		} else {
 			this.searchResults = this.vaultFiles
-				.filter(file => this.matchFile(file, this.searchQuery))
+				.filter(file => {
+					// 除外フォルダのチェック
+					for (const folder of this.plugin.settings.excludedFolders) {
+						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
+							return false;
+						}
+					}
+					return this.matchFile(file, this.searchQuery);
+				})
 				.slice(0, 50);
 		}
 		
