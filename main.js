@@ -309,20 +309,23 @@ class TabPaletteModal extends Modal {
 			return false;
 		});
 
-		// w キーでタブを閉じる
+		// w キーでタブを閉じる（検索窓に入力中は無視）
 		this.scope.register([], 'w', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.closeSelectedTab();
 			return false;
 		});
 
-		// p キーでタブをピン/アンピン
+		// p キーでタブをピン/アンピン（検索窓に入力中は無視）
 		this.scope.register([], 'p', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.pinSelectedTab();
 			return false;
 		});
 
-		// b キーでブックマーク/アンブックマーク
+		// b キーでブックマーク/アンブックマーク（検索窓に入力中は無視）
 		this.scope.register([], 'b', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.toggleBookmark();
 			return false;
 		});
