@@ -2,8 +2,7 @@
 .modal.mod-tab-palette {
 	width: 95vw !important;
 	max-width: 1600px !important;
-	height: auto !important;
-	max-height: 90vh !important;
+	height: 85vh !important;
 }
 
 /* タブパレットモーダル（コンテンツ部分） */
