@@ -109,6 +109,8 @@ class TabPaletteModal extends Modal {
 
 		this.searchQuery = '';
 		this.vaultFiles = []; // 全ファイルキャッシュ
+		this.fileContentCache = new Map(); // ファイル内容キャッシュ（パス → 中身のテキスト）
+		this.searchDebounceTimer = null; // デバウンス用タイマー
 
 		this.filteredTabs = [];
 		this.filteredBookmarks = [];
@@ -138,8 +140,18 @@ class TabPaletteModal extends Modal {
 		modalEl.addClass('mod-tab-palette');
 		contentEl.addClass('tab-palette-modal');
 
-		// 全ファイルを取得（非同期でキャッシュ）
-		this.vaultFiles = this.app.vault.getFiles();
+		// 全ファイルを取得（除外フォルダを除く）
+		this.vaultFiles = this.app.vault.getFiles().filter(file => {
+			for (const folder of this.plugin.settings.excludedFolders) {
+				if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
+					return false;
+				}
+			}
+			return true;
+		});
+
+		// バックグラウンドでファイル内容をキャッシュ（md ファイルのみ）
+		this.buildContentCache();
 
 		// データ初期取得
 		this.tabs = this.getTabs();
@@ -157,14 +169,14 @@ class TabPaletteModal extends Modal {
 		// --- 左カラム：Search ---
 		if (this.plugin.settings.enableSearch) {
 			const searchColumn = columnsEl.createDiv('tab-palette-column');
-			searchColumn.createEl('h3', { text: 'Vault Search' });
+			searchColumn.createEl('h3', { text: 'Search' });
 			
 			// 検索ボックスを左カラム内に配置
 			const searchContainer = searchColumn.createDiv('tab-palette-search-container');
 			this.searchInput = searchContainer.createEl('input', {
 				type: 'text',
 				cls: 'tab-palette-search-input',
-				placeholder: 'Search vault...'
+				placeholder: 'Search... (name: path: tag:)'
 			});
 			
 			const searchList = searchColumn.createDiv('tab-palette-search-list');
@@ -172,8 +184,12 @@ class TabPaletteModal extends Modal {
 			// イベントリスナー設定（検索有効時のみ）
 			this.searchInput.addEventListener('input', (e) => {
 				const query = e.target.value;
-				this.performSearch(query);
-				this.renderAll();
+				// デバウンス：入力が止まって200ms後に検索を実行
+				if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
+				this.searchDebounceTimer = setTimeout(() => {
+					this.performSearch(query);
+					this.renderAll();
+				}, 200);
 			});
 
 			this.searchInput.addEventListener('compositionstart', () => {
@@ -230,7 +246,7 @@ class TabPaletteModal extends Modal {
 
 		// キーバインドヘルプを一番下に追加
 		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
-		helpFooter.createSpan().setText('w: close  |  p: toggle pin  |  b: toggle bookmark');
+		helpFooter.createSpan().setText('enter: open  |  w: close  |  p: toggle pin  |  b: toggle bookmark');
 
 		// 初回描画
 		this.renderAll();
@@ -334,56 +350,113 @@ class TabPaletteModal extends Modal {
 		}, 10);
 	}
 	
+	// ファイル内容キャッシュを構築（バックグラウンドで実行）
+	async buildContentCache() {
+		for (const file of this.vaultFiles) {
+			// md ファイルのみ内容をキャッシュ（画像やPDFなどは除外）
+			if (file.extension === 'md') {
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					this.fileContentCache.set(file.path, content.toLowerCase());
+				} catch (e) {
+					// 読めないファイルはスキップ
+				}
+			}
+		}
+	}
+
+	// 検索クエリをパース（プレフィックス検索に対応）
+	parseSearchQuery(rawQuery) {
+		const query = rawQuery.trim();
+
+		// name: プレフィックス → ファイル名だけで検索
+		if (query.toLowerCase().startsWith('name:')) {
+			return { type: 'name', value: query.slice(5).trim().toLowerCase() };
+		}
+		// path: プレフィックス → フォルダパスで検索
+		if (query.toLowerCase().startsWith('path:')) {
+			return { type: 'path', value: query.slice(5).trim().toLowerCase() };
+		}
+		// tag: プレフィックス → タグで検索
+		if (query.toLowerCase().startsWith('tag:')) {
+			return { type: 'tag', value: query.slice(4).trim().toLowerCase() };
+		}
+		// プレフィックスなし → 全部まとめて検索
+		return { type: 'all', value: query.toLowerCase() };
+	}
+
 	// 検索実行
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
-		
+
 		// 1. Tabs フィルタリング -> しない（要望：検索結果は反映しないでほしい）
 		this.filteredTabs = this.tabs;
-		
+
 		// 2. Bookmarks フィルタリング -> しない
 		this.filteredBookmarks = this.bookmarks;
-		
+
 		// 3. Search Results (Vault全体)
-		if (!this.searchQuery) {
-			this.searchResults = []; 
+		if (!query.trim()) {
+			this.searchResults = [];
 		} else {
+			const parsed = this.parseSearchQuery(query);
 			this.searchResults = this.vaultFiles
-				.filter(file => {
-					// 除外フォルダのチェック
-					for (const folder of this.plugin.settings.excludedFolders) {
-						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
-							return false;
-						}
-					}
-					return this.matchFile(file, this.searchQuery);
-				})
+				.filter(file => this.matchFile(file, parsed))
+				.sort((a, b) => (b.stat.mtime || 0) - (a.stat.mtime || 0))
 				.slice(0, 50);
 		}
-		
+
 		// インデックスのリセットと補正
 		this.selectedTabIndex = Math.min(this.selectedTabIndex, Math.max(0, this.filteredTabs.length - 1));
 		this.selectedBookmarkIndex = Math.min(this.selectedBookmarkIndex, Math.max(0, this.filteredBookmarks.length - 1));
 		this.selectedSearchIndex = 0;
 	}
-	
+
 	// ファイルマッチングロジック
-	matchFile(file, query) {
-		if (!query) return true;
+	matchFile(file, parsed) {
+		if (!parsed.value) return true;
 		if (!file) return false;
-		
+
+		const query = parsed.value;
+
+		if (parsed.type === 'name') {
+			// ファイル名だけで検索
+			return file.basename.toLowerCase().includes(query);
+		}
+
+		if (parsed.type === 'path') {
+			// パス（フォルダ）で検索
+			return file.path.toLowerCase().includes(query);
+		}
+
+		if (parsed.type === 'tag') {
+			// タグだけで検索
+			const cache = this.app.metadataCache.getFileCache(file);
+			if (cache && cache.tags) {
+				// # 付きでも # なしでもマッチするようにする
+				const normalizedQuery = query.startsWith('#') ? query : '#' + query;
+				return cache.tags.some(t => t.tag.toLowerCase().includes(normalizedQuery));
+			}
+			return false;
+		}
+
+		// type === 'all': 全部まとめて検索
 		// ファイル名
-		if (file.name.toLowerCase().includes(query)) return true;
-		
+		if (file.basename.toLowerCase().includes(query)) return true;
+
 		// パス
 		if (file.path.toLowerCase().includes(query)) return true;
-		
-		// タグ (キャッシュから取得)
+
+		// タグ
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (cache && cache.tags) {
 			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
 		}
-		
+
+		// ファイル内容
+		const content = this.fileContentCache.get(file.path);
+		if (content && content.includes(query)) return true;
+
 		return false;
 	}
 
