@@ -930,9 +930,11 @@ class TabPaletteModal extends Modal {
 			const result = this.searchResults[this.selectedSearchIndex];
 			if (result) {
 				fileToOpen = result.file;
-				// マッチ行がある場合は行番号を記録（ファイルを開いた後にジャンプする）
+				// マッチ行と検索ワードを記録（ファイルを開いた後にジャンプ＋ハイライトする）
 				if (result.matchLine !== null) {
 					this._openFileLine = result.matchLine;
+					const parsed = this.parseSearchQuery(this.searchQuery);
+					this._openFileQuery = parsed.value;
 				}
 			}
 		} else if (this.activeSection === 'dailyNotes') {
@@ -955,15 +957,38 @@ class TabPaletteModal extends Modal {
 			// 設定を確認して、常に新しいタブで開くか判断
 			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
 			const targetLine = this._openFileLine;
+			const searchWord = this._openFileQuery;
 			this._openFileLine = null;
+			this._openFileQuery = null;
 
 			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
-			// マッチ行がある場合はその行にジャンプ
-			if (targetLine !== null && targetLine !== undefined) {
-				leaf.openFile(fileToOpen, { eState: { line: targetLine } });
-			} else {
-				leaf.openFile(fileToOpen);
-			}
+			leaf.openFile(fileToOpen).then(() => {
+				if (targetLine !== null && targetLine !== undefined && searchWord) {
+					// 少し待ってからエディタを操作（ファイルの描画完了を待つ）
+					setTimeout(() => {
+						const editor = leaf.view?.editor;
+						if (!editor) return;
+
+						// マッチ行にスクロール
+						editor.setCursor({ line: targetLine, ch: 0 });
+
+						// 検索ワードの位置を見つけて選択状態にする
+						const lineText = editor.getLine(targetLine);
+						const idx = lineText.toLowerCase().indexOf(searchWord);
+						if (idx >= 0) {
+							editor.setSelection(
+								{ line: targetLine, ch: idx },
+								{ line: targetLine, ch: idx + searchWord.length }
+							);
+
+							// 3秒後に選択を解除（カーソルをワードの先頭に置く）
+							setTimeout(() => {
+								editor.setCursor({ line: targetLine, ch: idx });
+							}, 3000);
+						}
+					}, 100);
+				}
+			});
 			this.close();
 		} else {
 			// 何も選択されていない場合、何もしないか閉じる
