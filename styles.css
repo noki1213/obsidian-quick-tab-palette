@@ -58,10 +58,10 @@
 
 /* Column */
 .tab-palette-column {
-	flex: 1 1 0; /* 3等分 */
+	flex: 1 0 400px; /* 最小幅400px、それ以上は均等に広がる */
 	display: flex;
 	flex-direction: column;
-	min-width: 0; /* 子要素のオーバーフロー防止 */
+	min-width: 400px; /* これ以下には縮まない */
 	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
 }
@@ -281,6 +281,17 @@
 
 .tab-palette-bookmark-item.daily-note-not-exists .tab-palette-name-text {
     color: var(--text-muted);
+}
+
+/* Search result snippet (preview of the matching line) */
+.tab-palette-snippet {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+	padding-left: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* Keybinding help footer */

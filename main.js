@@ -109,6 +109,9 @@ class TabPaletteModal extends Modal {
 
 		this.searchQuery = '';
 		this.vaultFiles = []; // 全ファイルキャッシュ
+		this.fileContentCache = new Map(); // File contentsキャッシュ（パス → 小文字化した中身）
+		this.fileContentCacheOriginal = new Map(); // 元の内容（大文字小文字を保持）
+		this.searchDebounceTimer = null; // デバウンス用タイマー
 
 		this.filteredTabs = [];
 		this.filteredBookmarks = [];
@@ -138,8 +141,18 @@ class TabPaletteModal extends Modal {
 		modalEl.addClass('mod-tab-palette');
 		contentEl.addClass('tab-palette-modal');
 
-		// Get all files (cached asynchronously)
-		this.vaultFiles = this.app.vault.getFiles();
+		// Get all files (excluding excluded folders)
+		this.vaultFiles = this.app.vault.getFiles().filter(file => {
+			for (const folder of this.plugin.settings.excludedFolders) {
+				if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
+					return false;
+				}
+			}
+			return true;
+		});
+
+		// Cache file contents in the background (md files only)
+		this.buildContentCache();
 
 		// Initial data fetch
 		this.tabs = this.getTabs();
@@ -157,14 +170,14 @@ class TabPaletteModal extends Modal {
 		// --- Left column: Search ---
 		if (this.plugin.settings.enableSearch) {
 			const searchColumn = columnsEl.createDiv('tab-palette-column');
-			searchColumn.createEl('h3', { text: 'Vault Search' });
+			searchColumn.createEl('h3', { text: 'Search' });
 			
 			// Place the search box inside the left column
 			const searchContainer = searchColumn.createDiv('tab-palette-search-container');
 			this.searchInput = searchContainer.createEl('input', {
 				type: 'text',
 				cls: 'tab-palette-search-input',
-				placeholder: 'Search vault...'
+				placeholder: 'Search... (name: path: tag:)'
 			});
 			
 			const searchList = searchColumn.createDiv('tab-palette-search-list');
@@ -172,8 +185,12 @@ class TabPaletteModal extends Modal {
 			// Set up event listeners (only when search is enabled)
 			this.searchInput.addEventListener('input', (e) => {
 				const query = e.target.value;
-				this.performSearch(query);
-				this.renderAll();
+				// Debounce: run the search 200ms after input stops
+				if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
+				this.searchDebounceTimer = setTimeout(() => {
+					this.performSearch(query);
+					this.renderAll();
+				}, 200);
 			});
 
 			this.searchInput.addEventListener('compositionstart', () => {
@@ -230,7 +247,7 @@ class TabPaletteModal extends Modal {
 
 		// Add the keybinding help at the very bottom
 		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
-		helpFooter.createSpan().setText('w: close  |  p: toggle pin  |  b: toggle bookmark');
+		helpFooter.createSpan().setText('enter: open  |  w: close  |  p: toggle pin  |  b: toggle bookmark');
 
 		// Initial render
 		this.renderAll();
@@ -292,20 +309,23 @@ class TabPaletteModal extends Modal {
 			return false;
 		});
 
-		// w key closes the tab
+		// w key closes the tab (ignored while typing in the search box)
 		this.scope.register([], 'w', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.closeSelectedTab();
 			return false;
 		});
 
-		// p key toggles pin/unpin on a tab
+		// p key toggles pin/unpin on a tab (ignored while typing in the search box)
 		this.scope.register([], 'p', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.pinSelectedTab();
 			return false;
 		});
 
-		// b key toggles bookmark/unbookmark
+		// b key toggles bookmark/unbookmark (ignored while typing in the search box)
 		this.scope.register([], 'b', (e) => {
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.toggleBookmark();
 			return false;
 		});
@@ -323,67 +343,202 @@ class TabPaletteModal extends Modal {
 			}
 			this.modalEl.focus();
 			
-			// Adjust scroll so the current active column is visible
-			// Handle this generically since tabsColumn may not exist
+			// Adjust scroll so the current active column (Tabs) is visible
 			const container = this.contentEl.querySelector('.tab-palette-columns');
 			if (container) {
-				// This roughly centers things, but strictly speaking it should look up the column that corresponds to activeSection
-				// No action needed here since this gets adjusted when switchSection is called or during renderAll
-				// For now, just try a simple scroll
+				// Find the column index corresponding to activeSection
+				let targetColumnIndex = -1;
+				if (this.activeSection === 'search') {
+					targetColumnIndex = 0;
+				} else if (this.activeSection === 'tabs') {
+					targetColumnIndex = this.plugin.settings.enableSearch ? 1 : 0;
+				} else {
+					// bookmarks/dailyNotes
+					let idx = 0;
+					if (this.plugin.settings.enableSearch) idx++;
+					if (this.plugin.settings.enableTabs) idx++;
+					targetColumnIndex = idx;
+				}
+				if (targetColumnIndex >= 0 && targetColumnIndex < container.children.length) {
+					const targetColumn = container.children[targetColumnIndex];
+					if (targetColumn) {
+						targetColumn.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' });
+					}
+				}
 			}
 		}, 10);
 	}
 	
+	// Build the file-content cache (runs in the background)
+	async buildContentCache() {
+		for (const file of this.vaultFiles) {
+			// Cache content only for md files (excludes images, PDFs, etc.)
+			if (file.extension === 'md') {
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					this.fileContentCache.set(file.path, content.toLowerCase());
+					this.fileContentCacheOriginal.set(file.path, content);
+				} catch (e) {
+					// Skip files that can't be read
+				}
+			}
+		}
+	}
+
+	// Parse the search query (supports prefix search)
+	parseSearchQuery(rawQuery) {
+		const query = rawQuery.trim();
+
+		// name: prefix -> search by file name only
+		if (query.toLowerCase().startsWith('name:')) {
+			return { type: 'name', value: query.slice(5).trim().toLowerCase() };
+		}
+		// path: prefix -> search by folder path
+		if (query.toLowerCase().startsWith('path:')) {
+			return { type: 'path', value: query.slice(5).trim().toLowerCase() };
+		}
+		// tag: prefix -> search by tag
+		if (query.toLowerCase().startsWith('tag:')) {
+			return { type: 'tag', value: query.slice(4).trim().toLowerCase() };
+		}
+		// No prefix -> search everything together
+		return { type: 'all', value: query.toLowerCase() };
+	}
+
 	// Run the search
 	performSearch(query) {
 		this.searchQuery = query.toLowerCase();
-		
+
 		// 1. Filter tabs -> skip it (search results shouldn't be affected by this)
 		this.filteredTabs = this.tabs;
-		
+
 		// 2. Filter bookmarks -> skip it
 		this.filteredBookmarks = this.bookmarks;
-		
+
 		// 3. Search results (across the whole vault)
-		if (!this.searchQuery) {
-			this.searchResults = []; 
+		// Each result has the shape { file, matchLine, snippet }
+		if (!query.trim()) {
+			this.searchResults = [];
 		} else {
+			const parsed = this.parseSearchQuery(query);
 			this.searchResults = this.vaultFiles
-				.filter(file => {
-					// Check excluded folders
-					for (const folder of this.plugin.settings.excludedFolders) {
-						if (file.path.startsWith(folder + '/') || file.path.startsWith(folder)) {
-							return false;
-						}
-					}
-					return this.matchFile(file, this.searchQuery);
+				.filter(file => this.matchFile(file, parsed))
+				.map(file => {
+					const match = this.getMatchInfo(file, parsed);
+					return { file, matchLine: match.line, snippet: match.snippet };
 				})
+				.sort((a, b) => (b.file.stat.mtime || 0) - (a.file.stat.mtime || 0))
 				.slice(0, 50);
 		}
-		
+
 		// Reset and correct the index
 		this.selectedTabIndex = Math.min(this.selectedTabIndex, Math.max(0, this.filteredTabs.length - 1));
 		this.selectedBookmarkIndex = Math.min(this.selectedBookmarkIndex, Math.max(0, this.filteredBookmarks.length - 1));
 		this.selectedSearchIndex = 0;
 	}
-	
+
+	// Get all of a file's tags (both inline tags in the body and frontmatter tags)
+	getFileTags(file) {
+		const cache = this.app.metadataCache.getFileCache(file);
+		if (!cache) return [];
+
+		const tags = [];
+
+		// Inline tags in the body (#tag form)
+		if (cache.tags) {
+			cache.tags.forEach(t => tags.push(t.tag.toLowerCase()));
+		}
+
+		// Tags from frontmatter
+		if (cache.frontmatter && cache.frontmatter.tags) {
+			const fmTags = cache.frontmatter.tags;
+			if (Array.isArray(fmTags)) {
+				fmTags.forEach(t => {
+					const tag = String(t).toLowerCase();
+					tags.push(tag.startsWith('#') ? tag : '#' + tag);
+				});
+			} else if (typeof fmTags === 'string') {
+				const tag = fmTags.toLowerCase();
+				tags.push(tag.startsWith('#') ? tag : '#' + tag);
+			}
+		}
+
+		return tags;
+	}
+
+	// Get info about the matching line from the file contents (line number + snippet)
+	getMatchInfo(file, parsed) {
+		const query = parsed.value;
+		const originalContent = this.fileContentCacheOriginal.get(file.path);
+		if (!originalContent || !query) return { line: null, snippet: null };
+
+		const lines = originalContent.split('\n');
+		// Logic to skip over frontmatter
+		let inFrontmatter = false;
+		let frontmatterEnd = 0;
+
+		for (let i = 0; i < lines.length; i++) {
+			const trimmed = lines[i].trim();
+			if (i === 0 && trimmed === '---') {
+				inFrontmatter = true;
+				continue;
+			}
+			if (inFrontmatter) {
+				if (trimmed === '---') {
+					inFrontmatter = false;
+					frontmatterEnd = i;
+				}
+				continue;
+			}
+
+			if (lines[i].toLowerCase().includes(query)) {
+				const line = lines[i].trim();
+				const snippet = line.length > 80 ? line.substring(0, 80) + '...' : line;
+				return { line: i, snippet };
+			}
+		}
+		return { line: null, snippet: null };
+	}
+
 	// File-matching logic
-	matchFile(file, query) {
-		if (!query) return true;
+	matchFile(file, parsed) {
+		if (!parsed.value) return true;
 		if (!file) return false;
-		
+
+		const query = parsed.value;
+
+		if (parsed.type === 'name') {
+			// Search by file name only
+			return file.basename.toLowerCase().includes(query);
+		}
+
+		if (parsed.type === 'path') {
+			// Search by path (folder)
+			return file.path.toLowerCase().includes(query);
+		}
+
+		if (parsed.type === 'tag') {
+			// Search by tag only (both frontmatter and inline)
+			const tags = this.getFileTags(file);
+			const normalizedQuery = query.startsWith('#') ? query : '#' + query;
+			return tags.some(t => t.includes(normalizedQuery));
+		}
+
+		// type === 'all': search everything together
 		// File name
-		if (file.name.toLowerCase().includes(query)) return true;
-		
+		if (file.basename.toLowerCase().includes(query)) return true;
+
 		// Path
 		if (file.path.toLowerCase().includes(query)) return true;
-		
-		// Tags (retrieved from the cache)
-		const cache = this.app.metadataCache.getFileCache(file);
-		if (cache && cache.tags) {
-			if (cache.tags.some(t => t.tag.toLowerCase().includes(query))) return true;
-		}
-		
+
+		// Tags (both frontmatter and inline)
+		const tags = this.getFileTags(file);
+		if (tags.some(t => t.includes(query))) return true;
+
+		// File contents
+		const content = this.fileContentCache.get(file.path);
+		if (content && content.includes(query)) return true;
+
 		return false;
 	}
 
@@ -621,31 +776,37 @@ class TabPaletteModal extends Modal {
 	// Show the search results
 	renderSearchResults(container) {
 		container.empty();
-		
+
 		if (this.searchResults.length === 0) {
 			const msg = this.searchQuery ? 'No results found' : 'Type to search...';
 			container.createDiv({ text: msg, cls: 'tab-palette-empty-message' });
 			return;
 		}
-		
-		this.searchResults.forEach((file, index) => {
+
+		this.searchResults.forEach((result, index) => {
 			const itemEl = container.createDiv('tab-palette-search-item');
-			
+
 			if (this.activeSection === 'search' && index === this.selectedSearchIndex) {
 				itemEl.addClass('is-selected');
 			}
-			
+
 			// Shape the object for shared rendering
 			const itemData = {
-				file: file,
-				name: file.basename,
-				path: file.path,
-				isPinned: false, // 検索結果にはピン情報は持たせない（必要なら取得可）
-				isBookmarked: this.isFileBookmarked(file.path)
+				file: result.file,
+				name: result.file.basename,
+				path: result.file.path,
+				isPinned: false,
+				isBookmarked: this.isFileBookmarked(result.file.path)
 			};
-			
+
 			this.renderEntryContent(itemEl, itemData);
-			
+
+			// Show a snippet of the matching line
+			if (result.snippet) {
+				const snippetEl = itemEl.createDiv('tab-palette-snippet');
+				snippetEl.setText(result.snippet);
+			}
+
 			itemEl.addEventListener('click', () => {
 				this.activeSection = 'search';
 				this.selectedSearchIndex = index;
@@ -782,7 +943,15 @@ class TabPaletteModal extends Modal {
 			if (bookmark) fileToOpen = bookmark.file;
 		} else if (this.activeSection === 'search') {
 			const result = this.searchResults[this.selectedSearchIndex];
-			if (result) fileToOpen = result;
+			if (result) {
+				fileToOpen = result.file;
+				// Record the matching line and search term (to jump to and highlight after the file opens)
+				if (result.matchLine !== null) {
+					this._openFileLine = result.matchLine;
+					const parsed = this.parseSearchQuery(this.searchQuery);
+					this._openFileQuery = parsed.value;
+				}
+			}
 		} else if (this.activeSection === 'dailyNotes') {
 			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
 			if (dailyNote) {
@@ -802,9 +971,39 @@ class TabPaletteModal extends Modal {
 			// Open the file
 			// Check the settings to decide whether to always open in a new tab
 			const openInNewTab = this.plugin.settings.alwaysOpenInNewTab;
-			
+			const targetLine = this._openFileLine;
+			const searchWord = this._openFileQuery;
+			this._openFileLine = null;
+			this._openFileQuery = null;
+
 			const leaf = this.app.workspace.getLeaf(openInNewTab ? 'tab' : false);
-			leaf.openFile(fileToOpen);
+			leaf.openFile(fileToOpen).then(() => {
+				if (targetLine !== null && targetLine !== undefined && searchWord) {
+					// Wait a bit before touching the editor (to let the file finish rendering)
+					setTimeout(() => {
+						const editor = leaf.view?.editor;
+						if (!editor) return;
+
+						// Scroll to the matching line
+						editor.setCursor({ line: targetLine, ch: 0 });
+
+						// Find the position of the search term and select it
+						const lineText = editor.getLine(targetLine);
+						const idx = lineText.toLowerCase().indexOf(searchWord);
+						if (idx >= 0) {
+							editor.setSelection(
+								{ line: targetLine, ch: idx },
+								{ line: targetLine, ch: idx + searchWord.length }
+							);
+
+							// Clear the selection after 3 seconds (place the cursor at the start of the word)
+							setTimeout(() => {
+								editor.setCursor({ line: targetLine, ch: idx });
+							}, 3000);
+						}
+					}, 100);
+				}
+			});
 			this.close();
 		} else {
 			// Do nothing, or close, if nothing is selected
@@ -882,7 +1081,7 @@ class TabPaletteModal extends Modal {
 			if (bookmark) file = bookmark.file;
 		} else if (this.activeSection === 'search') {
 			const result = this.searchResults[this.selectedSearchIndex];
-			if (result) file = result;
+			if (result) file = result.file;
 		} else if (this.activeSection === 'dailyNotes') {
 			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
 			if (dailyNote && dailyNote.exists) file = dailyNote.file;
