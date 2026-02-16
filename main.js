@@ -123,6 +123,9 @@ class TabPaletteModal extends Modal {
 
 		// Track whether IME composition is in progress
 		this.isComposing = false;
+
+		// Flag for whether the pane menu is showing (disables the palette's key handling while it is)
+		this.paneMenuActive = false;
 	}
 
 	getEnabledSections() {
@@ -140,6 +143,10 @@ class TabPaletteModal extends Modal {
 		// Add the class that controls the overall modal size
 		modalEl.addClass('mod-tab-palette');
 		contentEl.addClass('tab-palette-modal');
+
+		// Record the active pane (tab group) at the moment the palette was opened
+		const activeLeaf = this.app.workspace.activeLeaf;
+		this.openedFromGroup = activeLeaf ? activeLeaf.parent : null;
 
 		// Get all files (excluding excluded folders)
 		this.vaultFiles = this.app.vault.getFiles().filter(file => {
@@ -247,7 +254,7 @@ class TabPaletteModal extends Modal {
 
 		// Add the keybinding help at the very bottom
 		const helpFooter = contentEl.createDiv('tab-palette-help-footer');
-		helpFooter.createSpan().setText('enter: open  |  w: close  |  p: toggle pin  |  b: toggle bookmark');
+		helpFooter.createSpan().setText('enter: open  |  shift+enter: open in...  |  w: close  |  p: toggle pin  |  b: toggle bookmark');
 
 		// Initial render
 		this.renderAll();
@@ -265,44 +272,50 @@ class TabPaletteModal extends Modal {
 		};
 
 		// Register keyboard events (list navigation)
+		// Disable the palette's key handling while the pane menu is showing
 		this.scope.register([], 'ArrowUp', (e) => {
+			if (this.paneMenuActive) return;
 			enableKeyboardMode();
 			this.moveSelection(-1);
 			return false;
 		});
 
 		this.scope.register([], 'ArrowDown', (e) => {
+			if (this.paneMenuActive) return;
 			enableKeyboardMode();
 			this.moveSelection(1);
 			return false;
 		});
-		
+
 		// Move between sections with the left/right keys
 		this.scope.register([], 'ArrowLeft', (e) => {
-			if (this.searchInput && document.activeElement === this.searchInput) return; 
+			if (this.paneMenuActive) return;
+			if (this.searchInput && document.activeElement === this.searchInput) return;
 			enableKeyboardMode();
 			this.switchSection('left');
 			return false;
 		});
 
 		this.scope.register([], 'ArrowRight', (e) => {
+			if (this.paneMenuActive) return;
 			// When the search box has focus
 			if (this.searchInput && document.activeElement === this.searchInput) {
 				// Check whether the cursor is at the end
 				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
 				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
-				
+
 				// Blur focus to move to the next section if we're at the end
 				this.searchInput.blur();
 				this.modalEl.focus();
 			}
-			
+
 			enableKeyboardMode();
 			this.switchSection('right');
 			return false;
 		});
 
 		this.scope.register([], 'Enter', (e) => {
+			if (this.paneMenuActive) return;
 			// Ignore while IME conversion is in progress
 			if (e.isComposing || this.isComposing) return;
 			this.openSelectedTab();
@@ -311,6 +324,7 @@ class TabPaletteModal extends Modal {
 
 		// w key closes the tab (ignored while typing in the search box)
 		this.scope.register([], 'w', (e) => {
+			if (this.paneMenuActive) return;
 			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.closeSelectedTab();
 			return false;
@@ -318,6 +332,7 @@ class TabPaletteModal extends Modal {
 
 		// p key toggles pin/unpin on a tab (ignored while typing in the search box)
 		this.scope.register([], 'p', (e) => {
+			if (this.paneMenuActive) return;
 			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.pinSelectedTab();
 			return false;
@@ -325,8 +340,17 @@ class TabPaletteModal extends Modal {
 
 		// b key toggles bookmark/unbookmark (ignored while typing in the search box)
 		this.scope.register([], 'b', (e) => {
+			if (this.paneMenuActive) return;
 			if (this.searchInput && document.activeElement === this.searchInput) return;
 			this.toggleBookmark();
+			return false;
+		});
+
+		// Shift+Enter shows the pane-selection menu
+		this.scope.register(['Shift'], 'Enter', (e) => {
+			if (this.paneMenuActive) return;
+			if (e.isComposing || this.isComposing) return;
+			this.showPaneMenu();
 			return false;
 		});
 
@@ -965,7 +989,22 @@ class TabPaletteModal extends Modal {
 		}
 
 		if (leaf) {
-			this.app.workspace.setActiveLeaf(leaf, { focus: true });
+			// If the tab is in a different pane, move it into the current pane
+			if (this.openedFromGroup && leaf.parent !== this.openedFromGroup) {
+				// Close it from the original pane
+				const file = leaf.view?.file;
+				leaf.detach();
+				// Reopen it in the current pane
+				if (file) {
+					const newLeaf = this.app.workspace.createLeafInParent(
+						this.openedFromGroup, this.openedFromGroup.children.length
+					);
+					newLeaf.openFile(file);
+					this.app.workspace.setActiveLeaf(newLeaf, { focus: true });
+				}
+			} else {
+				this.app.workspace.setActiveLeaf(leaf, { focus: true });
+			}
 			this.close();
 		} else if (fileToOpen) {
 			// Open the file
@@ -1047,6 +1086,17 @@ class TabPaletteModal extends Modal {
 		this.tabs = this.getTabs();
 		this.performSearch(this.searchQuery); // 再フィルタリング
 		this.renderAll();
+
+		// Return focus to the modal after closing the tab
+		// Because detach() causes Obsidian to change focus asynchronously,
+		// Reverting immediately isn't enough; it also needs to be reverted again after a short delay
+		this.modalEl.focus();
+		setTimeout(() => {
+			if (this.searchInput && document.activeElement === this.searchInput) {
+				this.searchInput.blur();
+			}
+			this.modalEl.focus();
+		}, 50);
 	}
 
 	// Pin/unpin the currently selected tab
@@ -1295,6 +1345,233 @@ class TabPaletteModal extends Modal {
 	
 	// Kept for backward compatibility (unused)
 	getBookmarks() { return this.getBookmarksList(); }
+
+	// Show the pane-selection menu
+	showPaneMenu() {
+		// Get the currently selected file
+		let fileToOpen = null;
+
+		if (this.activeSection === 'tabs') {
+			const tab = this.filteredTabs[this.selectedTabIndex];
+			if (tab) fileToOpen = tab.file;
+		} else if (this.activeSection === 'bookmarks') {
+			const bookmark = this.filteredBookmarks[this.selectedBookmarkIndex];
+			if (bookmark) fileToOpen = bookmark.file;
+		} else if (this.activeSection === 'search') {
+			const result = this.searchResults[this.selectedSearchIndex];
+			if (result) fileToOpen = result.file;
+		} else if (this.activeSection === 'dailyNotes') {
+			const dailyNote = this.dailyNotes[this.selectedDailyNoteIndex];
+			if (dailyNote && dailyNote.exists) fileToOpen = dailyNote.file;
+		}
+
+		if (!fileToOpen) return;
+
+		// Turn on the pane-menu-showing flag (disables the palette's key handling)
+		this.paneMenuActive = true;
+
+		// Get the list of existing panes (tab groups)
+		const workspace = this.app.workspace;
+		const rootSplit = workspace.rootSplit;
+		const tabGroups = this.plugin.getAllTabGroups(rootSplit);
+
+		// Create the menu item
+		const menuItems = [];
+
+		// List of existing panes
+		tabGroups.forEach((group, index) => {
+			// Get the file name of the currently active tab in that group
+			const activeChild = group.children[group.currentTab];
+			let activeFileName = 'Empty';
+			if (activeChild && activeChild.view && activeChild.view.file) {
+				activeFileName = activeChild.view.file.basename;
+			} else if (activeChild && activeChild.view) {
+				activeFileName = activeChild.getDisplayText() || 'Empty';
+			}
+
+			menuItems.push({
+				type: 'pane',
+				label: `Pane ${index + 1}: ${activeFileName}`,
+				group: group
+			});
+		});
+
+		// Divider
+		menuItems.push({ type: 'separator' });
+
+		// New-split option
+		menuItems.push({ type: 'split', label: 'Split right', direction: 'vertical', before: false });
+		menuItems.push({ type: 'split', label: 'Split left', direction: 'vertical', before: true });
+		menuItems.push({ type: 'split', label: 'Split down', direction: 'horizontal', before: false });
+		menuItems.push({ type: 'split', label: 'Split up', direction: 'horizontal', before: true });
+
+		// List of selectable item indices (excludes separators)
+		const selectableIndices = menuItems
+			.map((item, i) => item.type !== 'separator' ? i : -1)
+			.filter(i => i >= 0);
+		let selectedMenuIndex = 0; // selectableIndices 内でのインデックス
+
+		// Create the overlay element
+		const overlay = document.createElement('div');
+		overlay.className = 'pane-menu-overlay';
+
+		const menuBox = document.createElement('div');
+		menuBox.className = 'pane-menu-box';
+
+		const title = document.createElement('div');
+		title.className = 'pane-menu-title';
+		title.textContent = `Open in... : ${fileToOpen.basename}`;
+		menuBox.appendChild(title);
+
+		const listEl = document.createElement('div');
+		listEl.className = 'pane-menu-list';
+
+		// Render the menu item
+		const renderMenu = () => {
+			listEl.innerHTML = '';
+			menuItems.forEach((item, index) => {
+				if (item.type === 'separator') {
+					const sep = document.createElement('hr');
+					sep.className = 'pane-menu-separator';
+					listEl.appendChild(sep);
+					return;
+				}
+
+				const itemEl = document.createElement('div');
+				itemEl.className = 'pane-menu-item';
+				itemEl.textContent = item.label;
+
+				if (selectableIndices[selectedMenuIndex] === index) {
+					itemEl.classList.add('is-selected');
+				}
+
+				// Move the selection on mouse hover
+				itemEl.addEventListener('mouseenter', () => {
+					const selIdx = selectableIndices.indexOf(index);
+					if (selIdx >= 0) {
+						selectedMenuIndex = selIdx;
+						renderMenu();
+					}
+				});
+
+				// Confirm selection on click
+				itemEl.addEventListener('click', () => {
+					const selIdx = selectableIndices.indexOf(index);
+					if (selIdx >= 0) {
+						selectedMenuIndex = selIdx;
+						confirmSelection();
+					}
+				});
+
+				listEl.appendChild(itemEl);
+			});
+		};
+
+		menuBox.appendChild(listEl);
+		overlay.appendChild(menuBox);
+		this.modalEl.appendChild(overlay);
+
+		// Confirm the selection and execute it
+		const confirmSelection = () => {
+			const selectedItem = menuItems[selectableIndices[selectedMenuIndex]];
+			cleanup();
+			this.openInPane(fileToOpen, selectedItem);
+		};
+
+		// Close the menu and return to the palette
+		const cleanup = () => {
+			this.paneMenuActive = false;
+			document.removeEventListener('keydown', handleKeydown, true);
+			if (overlay.parentNode) {
+				overlay.parentNode.removeChild(overlay);
+			}
+		};
+
+		// Keyboard navigation
+		const handleKeydown = (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+
+			if (e.key === 'ArrowDown') {
+				if (selectedMenuIndex < selectableIndices.length - 1) {
+					selectedMenuIndex++;
+				}
+				renderMenu();
+			} else if (e.key === 'ArrowUp') {
+				if (selectedMenuIndex > 0) {
+					selectedMenuIndex--;
+				}
+				renderMenu();
+			} else if (e.key === 'Enter') {
+				confirmSelection();
+			} else if (e.key === 'Escape') {
+				cleanup();
+			}
+		};
+
+		document.addEventListener('keydown', handleKeydown, true);
+
+		// Close when the overlay background is clicked
+		overlay.addEventListener('click', (e) => {
+			if (e.target === overlay) {
+				cleanup();
+			}
+		});
+
+		// Initial render
+		renderMenu();
+	}
+
+	// Open the file in the specified pane or a new split (move semantics)
+	// If it's already open in a different pane, open it in a new pane and then close the original tab
+	openInPane(file, menuItem) {
+		const workspace = this.app.workspace;
+
+		// Just focus it if it's already in the same group as the destination
+		if (menuItem.type === 'pane') {
+			const existingInGroup = this.plugin.findMatchingLeaves(file)
+				.find(l => l.parent === menuItem.group);
+			if (existingInGroup) {
+				workspace.setActiveLeaf(existingInGroup, { focus: true });
+				this.close();
+				return;
+			}
+		}
+
+		// Record the leaf of the same file in another pane (to close later)
+		const existingLeaves = this.plugin.findMatchingLeaves(file);
+
+		let newLeaf;
+
+		if (menuItem.type === 'pane') {
+			const group = menuItem.group;
+			newLeaf = workspace.createLeafInParent(group, group.children.length);
+		} else if (menuItem.type === 'split') {
+			const activeLeaf = workspace.activeLeaf || workspace.getMostRecentLeaf();
+			if (activeLeaf) {
+				newLeaf = workspace.createLeafBySplit(activeLeaf, menuItem.direction, menuItem.before);
+			}
+		}
+
+		if (newLeaf) {
+			// Temporarily disable duplicate-tab prevention
+			const originalDedup = this.plugin.settings.deduplicateTabs;
+			this.plugin.settings.deduplicateTabs = false;
+
+			newLeaf.openFile(file).then(() => {
+				this.plugin.settings.deduplicateTabs = originalDedup;
+				// Once the file has finished opening, close the tab that was in the original pane
+				for (const leaf of existingLeaves) {
+					if (leaf !== newLeaf && leaf.parent) {
+						leaf.detach();
+					}
+				}
+			});
+			workspace.setActiveLeaf(newLeaf, { focus: true });
+		}
+
+		this.close();
+	}
 
 	onClose() {
 		const { contentEl } = this;
