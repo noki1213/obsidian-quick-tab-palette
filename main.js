@@ -75,6 +75,16 @@ function isInMainWorkspace(leaf) {
 	return root instanceof WorkspaceRoot || root instanceof WorkspaceFloating;
 }
 
+// Normalize Obsidian's navigation argument to determine whether it should open in a new tab
+function shouldForceNewTab(navigation) {
+	return navigation === undefined
+		|| navigation === null
+		|| navigation === false
+		|| navigation === true
+		|| navigation === 'tab'
+		|| navigation === 'active';
+}
+
 // Default settings
 const DEFAULT_SETTINGS = {
 	excludedFolders: [],
@@ -1932,12 +1942,10 @@ class TabPalettePlugin extends Plugin {
 					const activeLeaf = activeView ? activeView.leaf : undefined;
 
 					let leaf;
-					if (navigation === 'tab') {
-						// Create a new tab when a tab is explicitly specified
-						leaf = plugin.createNewLeaf(undefined, plugin.settings);
-					} else if (!navigation) {
-						// Regular click -> open in a new tab if alwaysOpenInNewTab is enabled
-						leaf = plugin.createNewLeaf(true, plugin.settings);
+					if (shouldForceNewTab(navigation)) {
+						// Prefer a new tab even if Obsidian's navigation format changes
+						const focus = navigation === false ? true : undefined;
+						leaf = plugin.createNewLeaf(focus, plugin.settings);
 					} else {
 						// Defer other cases (e.g. split) to the original logic
 						leaf = original.call(this, navigation, ...rest);
@@ -1959,6 +1967,23 @@ class TabPalettePlugin extends Plugin {
 						return this.getLeaf('tab');
 					}
 					return plugin.getUnpinnedLeaf(navigation);
+				};
+			},
+
+			// openLinkText: always steer the newLeaf argument toward a new tab when resolving links
+			openLinkText(original) {
+				return function(...args) {
+					if (!plugin.settings.alwaysOpenInNewTab) {
+						return original.apply(this, args);
+					}
+
+					// Old signature: openLinkText(linktext, sourcePath, newLeaf, openViewState)
+					// Preferentially correct for cases where the new signature also passes a newLeaf-equivalent as the 3rd argument
+					if (args.length >= 3 && shouldForceNewTab(args[2])) {
+						args[2] = 'tab';
+					}
+
+					return original.apply(this, args);
 				};
 			}
 		}));
