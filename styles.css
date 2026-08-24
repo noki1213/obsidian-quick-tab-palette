@@ -51,17 +51,17 @@
 	gap: 0;
 	flex: 1;
 	min-height: 0;
-	overflow-x: auto; /* 横スクロールを有効化 */
+	overflow-x: auto; /* Enable horizontal scrolling */
 	overflow-y: hidden;
 	scroll-behavior: smooth;
 }
 
 /* Column */
 .tab-palette-column {
-	flex: 1 0 400px; /* 最小幅400px、それ以上は均等に広がる */
+	flex: 1 0 400px; /* Min width 400px, grows evenly beyond that */
 	display: flex;
 	flex-direction: column;
-	min-width: 400px; /* これ以下には縮まない */
+	min-width: 400px; /* Never shrinks below this */
 	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
 }
@@ -99,7 +99,7 @@
 .tab-palette-search-list,
 .tab-palette-daily-note-list {
 	margin-top: 0;
-	overflow-y: auto; /* スクロール可能に */
+	overflow-y: auto; /* Make scrollable */
 	flex: 1;
 	padding-bottom: 10px;
 }
@@ -245,7 +245,7 @@
     border: 0;
     border-top: 1px solid var(--background-modifier-border);
     margin: 15px 0 10px 0;
-    display: block !important; /* display: none を上書き */
+    display: block !important; /* Override display: none */
 }
 
 .tab-palette-section-header {

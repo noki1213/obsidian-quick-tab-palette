@@ -90,12 +90,12 @@ const DEFAULT_SETTINGS = {
 	excludedFolders: [],
 	showTags: true,
 	showPath: true,
-	sortOrder: 'recency', // 'recency' または 'opening-order'
+	sortOrder: 'recency', // 'recency' or 'opening-order'
 	alwaysOpenInNewTab: false,
-	deduplicateTabs: true, // 重複タブ防止：同じファイルが開いていたらそのタブに切り替える
-	newTabPlacement: 'after-active', // 新しいタブの位置：'after-active', 'after-pinned', 'beginning', 'end'
-	newTabTabGroupPlacement: 'same', // タブグループの配置：'same', 'opposite', 'first', 'last'
-	recentlyClosed: [], // 最近閉じたタブの履歴
+	deduplicateTabs: true, // Prevent duplicate tabs: switch to the existing tab if the file is already open
+	newTabPlacement: 'after-active', // New tab position: 'after-active', 'after-pinned', 'beginning', 'end'
+	newTabTabGroupPlacement: 'same', // Tab group placement: 'same', 'opposite', 'first', 'last'
+	recentlyClosed: [], // Recently closed tab history
 	enableSearch: true,
 	enableTabs: true,
 	enableBookmarks: true,
@@ -118,10 +118,10 @@ class TabPaletteModal extends Modal {
 		this.selectedDailyNoteIndex = 0;
 
 		this.searchQuery = '';
-		this.vaultFiles = []; // 全ファイルキャッシュ
-		this.fileContentCache = new Map(); // File contentsキャッシュ（パス → 小文字化した中身）
-		this.fileContentCacheOriginal = new Map(); // 元の内容（大文字小文字を保持）
-		this.searchDebounceTimer = null; // デバウンス用タイマー
+		this.vaultFiles = []; // Cache of all vault files
+		this.fileContentCache = new Map(); // File contents cache (path -> lowercased content)
+		this.fileContentCacheOriginal = new Map(); // Original content (case preserved)
+		this.searchDebounceTimer = null; // Debounce timer
 
 		this.filteredTabs = [];
 		this.filteredBookmarks = [];
@@ -179,7 +179,7 @@ class TabPaletteModal extends Modal {
 		// Initial state (show all)
 		this.filteredTabs = this.tabs;
 		this.filteredBookmarks = this.bookmarks;
-		this.searchResults = []; // 初期は空にするか、全件出すか。ここでは空にする。
+		this.searchResults = []; // Could start empty or show everything; start empty here.
 
 		// Create the 3-column container
 		const columnsEl = contentEl.createDiv('tab-palette-columns');
@@ -312,7 +312,7 @@ class TabPaletteModal extends Modal {
 			if (this.searchInput && document.activeElement === this.searchInput) {
 				// Check whether the cursor is at the end
 				const isAtEnd = this.searchInput.selectionStart === this.searchInput.value.length;
-				if (!isAtEnd) return; // 末尾でなければ通常のカーソル移動を許可
+				if (!isAtEnd) return; // Allow normal cursor movement unless at the end
 
 				// Blur focus to move to the next section if we're at the end
 				this.searchInput.blur();
@@ -633,7 +633,7 @@ class TabPaletteModal extends Modal {
 			
 			// Find the target physical column
 			let targetColumnIndex = -1;
-			if (nextSection === 'search') targetColumnIndex = 0; // 常に左
+			if (nextSection === 'search') targetColumnIndex = 0; // Always leftmost
 			else if (nextSection === 'tabs') {
 				// Index 1 if search is enabled, otherwise index 0
 				targetColumnIndex = this.plugin.settings.enableSearch ? 1 : 0;
@@ -725,14 +725,14 @@ class TabPaletteModal extends Modal {
 
 			if (!isExcluded) {
 				tabs.push({
-					leaf: null, // 閉じたタブなのでleafなし
+					leaf: null, // Closed tab, so no leaf
 					file: file,
 					name: file.basename,
 					path: file.path,
 					isPinned: false,
 					isBookmarked: this.isFileBookmarked(file.path),
 					isRecentlyClosed: true,
-					isHeader: firstClosed // 最初の項目にヘッダーフラグ
+					isHeader: firstClosed // Header flag on the first item
 				});
 				if (firstClosed) firstClosed = false;
 			}
@@ -1094,7 +1094,7 @@ class TabPaletteModal extends Modal {
 		
 		// Update data
 		this.tabs = this.getTabs();
-		this.performSearch(this.searchQuery); // 再フィルタリング
+		this.performSearch(this.searchQuery); // Re-filter
 		this.renderAll();
 
 		// Return focus to the modal after closing the tab
@@ -1117,7 +1117,7 @@ class TabPaletteModal extends Modal {
 		if (!tab || !tab.leaf) return;
 		
 		tab.leaf.setPinned(!tab.isPinned);
-		tab.isPinned = !tab.isPinned; // ローカル更新
+		tab.isPinned = !tab.isPinned; // Update locally
 
 		this.renderTabs(this.contentEl.querySelector('.tab-palette-list'));
 	}
@@ -1259,8 +1259,8 @@ class TabPaletteModal extends Modal {
 				path: path,
 				label: label,
 				date: date.format('YYYY-MM-DD'),
-				exists: !!file, // ファイルの存在フラグ
-				momentDate: date // 作成時に使用
+				exists: !!file, // Whether the file exists
+				momentDate: date // Used when creating the note
 			});
 		});
 		
@@ -1419,7 +1419,7 @@ class TabPaletteModal extends Modal {
 		const selectableIndices = menuItems
 			.map((item, i) => item.type !== 'separator' ? i : -1)
 			.filter(i => i >= 0);
-		let selectedMenuIndex = 0; // selectableIndices 内でのインデックス
+		let selectedMenuIndex = 0; // Index within selectableIndices
 
 		// Create the overlay element
 		const overlay = document.createElement('div');
@@ -1645,7 +1645,7 @@ class TabPaletteSettingTab extends PluginSettingTab {
 					// Ideally this would re-render after saving settings to toggle the detail settings below, but
 					// here we simply save it and leave it at that
 					await this.plugin.saveSettings();
-					this.display(); // Re-renderして詳細設定の表示状態を更新
+					this.display(); // Re-render to update visibility of detail settings
 				}));
 
 		// --- Display options ---
@@ -1708,7 +1708,7 @@ class TabPaletteSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.alwaysOpenInNewTab = value;
 					await this.plugin.saveSettings();
-					this.display(); // 関連設定の表示を更新
+					this.display(); // Refresh visibility of related settings
 				}));
 
 		// Only show the detail settings when alwaysOpenInNewTab is enabled
