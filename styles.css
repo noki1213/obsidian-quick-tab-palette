@@ -58,10 +58,10 @@
 
 /* Column */
 .tab-palette-column {
-	flex: 1 0 400px; /* Min width 400px; grows evenly beyond that */
+	flex: 1 0 400px; /* Min width 400px, grows evenly beyond that */
 	display: flex;
 	flex-direction: column;
-	min-width: 400px; /* Won't shrink below this */
+	min-width: 400px; /* Never shrinks below this */
 	padding: 0 10px;
 	border-right: 1px solid var(--background-modifier-border);
 }
@@ -99,7 +99,7 @@
 .tab-palette-search-list,
 .tab-palette-daily-note-list {
 	margin-top: 0;
-	overflow-y: auto; /* Make it scrollable */
+	overflow-y: auto; /* Make scrollable */
 	flex: 1;
 	padding-bottom: 10px;
 }
